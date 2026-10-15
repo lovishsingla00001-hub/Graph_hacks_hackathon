@@ -21,26 +21,26 @@
 - [x] **[RUN - PASS]** `GET /health` does not call paid LLM endpoints.
 - [x] **[RUN - PASS]** CORS preflight and headers correctly allow Vite origins (`http://localhost:5173` & `http://127.0.0.1:5173`) and reject disallowed origins.
 - [ ] **[NOT RUN]** `POST /chat` input validation (rejects invalid `user_id`, empty message, >4000 characters).
-- [ ] **[NOT RUN]** `GET /memories` returns active memories for specified `user_id`.
+- [x] **[RUN - PASS]** `GET /memories` returns memories for specified `user_id` and validates format (422 on invalid).
 
 ---
 
 ## 3. Extraction & Memory Integrity
-- [ ] **[NOT RUN]** Facts vs Questions: Questions ("What is recursion?") never saved as struggles.
-- [ ] **[NOT RUN]** Negation & Correction: "I no longer struggle with X" marks previous memory resolved, not deleted.
-- [ ] **[NOT RUN]** Deduplication: Repeated identical statements update/deduplicate rather than creating duplicate nodes.
-- [ ] **[NOT RUN]** Exact source text: `source_text` matches user input substring.
-- [ ] **[NOT RUN]** Schema validation: Extraction output strictly validates against Pydantic schema with at most one repair attempt.
+- [ ] **[NOT RUN]** Facts vs Questions: Questions ("What is recursion?") never saved as struggles (Phase 3).
+- [x] **[RUN - PASS]** Negation & Correction: "I no longer struggle with X" marks previous memory resolved, not deleted.
+- [x] **[RUN - PASS]** Deduplication: Repeated identical statements update/deduplicate rather than creating duplicate nodes.
+- [ ] **[NOT RUN]** Exact source text: `source_text` matches user input substring (Phase 3).
+- [ ] **[NOT RUN]** Schema validation: Extraction output strictly validates against Pydantic schema with at most one repair attempt (Phase 3).
 
 ---
 
 ## 4. Graph Retrieval & Education Reasoning
-- [ ] **[NOT RUN]** Direct concept match: Topic in message retrieves corresponding active memory.
-- [ ] **[NOT RUN]** Prerequisite traversal: 2-hop prerequisite traversal (`-[:REQUIRES]->`) pulls foundational concepts.
-- [ ] **[NOT RUN]** Pedagogical preference: Active `PREFERS` memories are included in context.
-- [ ] **[NOT RUN]** Irrelevant questions: Questions unrelated to user memory retrieve nothing.
-- [ ] **[NOT RUN]** Resolved memories excluded: Resolved memories are excluded from retrieval context.
-- [ ] **[NOT RUN]** User isolation: User B's queries never retrieve User A's memories or concepts.
+- [ ] **[NOT RUN]** Direct concept match: Topic in message retrieves corresponding active memory (Phase 4).
+- [ ] **[NOT RUN]** Prerequisite traversal: 2-hop prerequisite traversal (`-[:REQUIRES]->`) pulls foundational concepts (Phase 4).
+- [ ] **[NOT RUN]** Pedagogical preference: Active `PREFERS` memories are included in context (Phase 4).
+- [ ] **[NOT RUN]** Irrelevant questions: Questions unrelated to user memory retrieve nothing (Phase 4).
+- [ ] **[NOT RUN]** Resolved memories excluded: Resolved memories are excluded from retrieval context (Phase 4).
+- [x] **[RUN - PASS]** User isolation: User B's queries never retrieve User A's memories or concepts.
 
 ---
 

@@ -3,7 +3,7 @@
 Updated: 2026-10-15 (Hackathon Event Window)
 
 ## Current Status
-- **Phase**: Phase 1 Complete -> Starting Phase 2 (Memory Store, Seeding, /memories, Frontend Mock Shell)
+- **Phase**: Phase 2 Complete -> Starting Phase 3 (Validated Extraction, Deduplication & Correction)
 - **Branch**: `dev`
 
 ## Done
@@ -23,12 +23,18 @@ Updated: 2026-10-15 (Hackathon Event Window)
 - [x] Built backend core foundation: `config.py`, `database.py`, `schemas.py`, `queries.py`, `routes/health.py`, `main.py`.
 - [x] Configured strict CORS middleware matching allowed Vite origins without wildcards.
 - [x] Created test suite: verified FalkorDB read/write smoke test and executed pytest suite for health checks and CORS preflight (4/4 passed).
+- [x] Phase 2: Built curated 15-concept curriculum graph (`curriculum.py`) with idempotent seeding on graph creation.
+- [x] Phase 2: Implemented `MemoryStore` service with deterministic deduplication keys, memory resolution, and user isolation.
+- [x] Phase 2: Implemented `GET /memories` endpoint with input validation and registered in FastAPI app.
+- [x] Phase 2: Built full frontend shell with React + Vite, vanilla CSS, and offline mock adapter in `src/api.js`.
+- [x] Phase 2: Executed automated tests: 10 backend pytest tests passed; 7 frontend node:test tests passed; frontend build succeeded.
 
 ## In Progress
-- [ ] Phase 2: Memory store, idempotent concept graph seeding, `/memories` endpoint, and frontend mock shell.
+- [ ] Phase 3: Validated LLM extraction with Pydantic schemas, exact source_text verification, repair logic, and correction handling.
 
 ## Next
-- Phase 2: Memory store, idempotent seed graph, `/memories` endpoint, frontend mock shell.
+- Phase 3: Validated extraction + dedupe + correction.
+- Phase 4: Retrieval + /chat + frontend connected live.
 - Phase 3: Validated extraction, deduplication, and memory correction.
 - Phase 4: Prerequisite graph traversal retrieval and live chat pipeline.
 
