@@ -150,3 +150,78 @@ def test_failed_repair_returns_warning_without_crashing():
     assert len(memories) == 0
     assert len(warnings) == 1
     assert warnings[0].stage == "extraction"
+
+def test_mixed_fact_and_question_saves_fact():
+    """
+    Test that a mixed message (fact + question) still successfully extracts and saves the fact.
+    Example: 'I struggle with recursion, can you explain it to me?'
+    """
+    service = ExtractionService()
+    service._llm = MagicMock()
+    service._llm.generate_json.return_value = {
+        "memories": [
+            {
+                "kind": "STRUGGLES_WITH",
+                "value": "recursion",
+                "source_text": "I struggle with recursion",
+                "is_correction": False,
+                "canonical_concept": "recursion"
+            }
+        ]
+    }
+
+    user_msg = "I struggle with recursion, can you explain it to me?"
+    memories, warnings = service.extract_memories(user_msg)
+
+    assert len(memories) == 1
+    assert memories[0].kind == "STRUGGLES_WITH"
+    assert memories[0].value == "recursion"
+    assert memories[0].source_text == "I struggle with recursion"
+    assert len(warnings) == 0
+
+def test_exact_source_text_accepts_casing_variations():
+    """
+    Test that casing variations in LLM response are mapped back to the user's verbatim text.
+    """
+    service = ExtractionService()
+    service._llm = MagicMock()
+    service._llm.generate_json.return_value = {
+        "memories": [
+            {
+                "kind": "STRUGGLES_WITH",
+                "value": "recursion",
+                "source_text": "i struggle with recursion",  # lowercased by LLM
+                "is_correction": False
+            }
+        ]
+    }
+
+    user_msg = "I Struggle With Recursion deeply."
+    memories, warnings = service.extract_memories(user_msg)
+
+    assert len(memories) == 1
+    # Successfully normalized to the user's verbatim casing
+    assert memories[0].source_text == "I Struggle With Recursion"
+
+def test_exact_source_text_accepts_whitespace_variations():
+    """
+    Test that whitespace variations (newlines, multiple spaces) are mapped back to verbatim text.
+    """
+    service = ExtractionService()
+    service._llm = MagicMock()
+    service._llm.generate_json.return_value = {
+        "memories": [
+            {
+                "kind": "PREFERS",
+                "value": "visual examples",
+                "source_text": "I prefer visual examples",  # single space
+                "is_correction": False
+            }
+        ]
+    }
+
+    user_msg = "When learning Python, I   prefer   visual\nexamples always."
+    memories, warnings = service.extract_memories(user_msg)
+
+    assert len(memories) == 1
+    assert memories[0].source_text == "I   prefer   visual\nexamples"

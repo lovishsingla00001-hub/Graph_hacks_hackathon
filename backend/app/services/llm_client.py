@@ -49,25 +49,36 @@ class LLMClient:
 
         if provider == "gemini":
             client = self._get_gemini_client()
-            try:
-                from google.genai import types
-                config = types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=temperature
-                )
-                response = client.models.generate_content(
-                    model=settings.LLM_MODEL,
-                    contents=user_prompt,
-                    config=config
-                )
-                if not response.text:
-                    raise LLMGenerationError("Gemini returned an empty text response.")
-                return response.text.strip()
-            except LLMConfigurationError:
-                raise
-            except Exception as e:
-                logger.error("Gemini text generation failed: %s", e)
-                raise LLMGenerationError(f"Gemini API error: {e}")
+            import time
+            from google.genai import types
+
+            config = types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=temperature
+            )
+
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model=settings.LLM_MODEL,
+                        contents=user_prompt,
+                        config=config
+                    )
+                    if not response.text:
+                        raise LLMGenerationError("Gemini returned an empty text response.")
+                    return response.text.strip()
+                except LLMConfigurationError:
+                    raise
+                except Exception as e:
+                    err_msg = str(e).lower()
+                    if ("429" in err_msg or "resource_exhausted" in err_msg or "503" in err_msg) and attempt < max_retries - 1:
+                        sleep_s = 12 * (attempt + 1)
+                        logger.warning("Gemini rate limit/busy encountered (attempt %d/%d). Sleeping %ds...", attempt + 1, max_retries, sleep_s)
+                        time.sleep(sleep_s)
+                    else:
+                        logger.error("Gemini text generation failed: %s", e)
+                        raise LLMGenerationError(f"Gemini API error: {e}")
 
         elif provider in ("openai", "groq"):
             import httpx
@@ -109,29 +120,40 @@ class LLMClient:
 
         if provider == "gemini":
             client = self._get_gemini_client()
-            try:
-                from google.genai import types
-                config = types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    response_mime_type="application/json",
-                    temperature=0.1
-                )
-                response = client.models.generate_content(
-                    model=settings.LLM_MODEL,
-                    contents=user_prompt,
-                    config=config
-                )
-                raw_text = (response.text or "").strip()
-                if not raw_text:
-                    raise LLMGenerationError("Gemini returned an empty JSON response.")
-                return json.loads(raw_text)
-            except json.JSONDecodeError as jde:
-                raise LLMGenerationError(f"Malformed JSON returned by Gemini: {jde}")
-            except LLMConfigurationError:
-                raise
-            except Exception as e:
-                logger.error("Gemini JSON generation failed: %s", e)
-                raise LLMGenerationError(f"Gemini API error: {e}")
+            import time
+            from google.genai import types
+
+            config = types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="application/json",
+                temperature=0.1
+            )
+
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model=settings.LLM_MODEL,
+                        contents=user_prompt,
+                        config=config
+                    )
+                    raw_text = (response.text or "").strip()
+                    if not raw_text:
+                        raise LLMGenerationError("Gemini returned an empty JSON response.")
+                    return json.loads(raw_text)
+                except json.JSONDecodeError as jde:
+                    raise LLMGenerationError(f"Malformed JSON returned by Gemini: {jde}")
+                except LLMConfigurationError:
+                    raise
+                except Exception as e:
+                    err_msg = str(e).lower()
+                    if ("429" in err_msg or "resource_exhausted" in err_msg or "503" in err_msg) and attempt < max_retries - 1:
+                        sleep_s = 15 * (attempt + 1)
+                        logger.warning("Gemini JSON rate limit/busy encountered (attempt %d/%d). Sleeping %ds...", attempt + 1, max_retries, sleep_s)
+                        time.sleep(sleep_s)
+                    else:
+                        logger.error("Gemini JSON generation failed: %s", e)
+                        raise LLMGenerationError(f"Gemini API error: {e}")
 
         elif provider in ("openai", "groq"):
             raw_text = self.generate_text(

@@ -130,20 +130,35 @@ class ExtractionService:
         # Post-validation checks: exact source_text rule
         valid_memories: List[ExtractedMemoryItem] = []
         for mem in parsed.memories:
-            # Check 1: source_text must be in user_message
-            if mem.source_text not in user_msg_clean:
-                # Try case-insensitive fallback if only casing differed
-                if mem.source_text.lower() in user_msg_clean.lower():
-                    # Extract exact casing from original text
-                    start_idx = user_msg_clean.lower().find(mem.source_text.lower())
-                    mem.source_text = user_msg_clean[start_idx : start_idx + len(mem.source_text)]
+            target = mem.source_text.strip().strip('"\'')
+            if not target:
+                continue
+
+            # 1. Exact match
+            if target in user_msg_clean:
+                mem.source_text = target
+            elif target.lower() in user_msg_clean.lower():
+                # Case variation: match exact case from user message
+                start_idx = user_msg_clean.lower().find(target.lower())
+                mem.source_text = user_msg_clean[start_idx : start_idx + len(target)]
+            else:
+                # Whitespace / formatting variation: match words with flexible whitespace
+                words = target.split()
+                if words:
+                    import re
+                    pattern = r"\s+".join(re.escape(w) for w in words)
+                    match = re.search(pattern, user_msg_clean, re.IGNORECASE)
+                    if match:
+                        mem.source_text = match.group(0)
+                    else:
+                        logger.warning("Rejected memory: source_text '%s' not found verbatim in user message.", mem.source_text)
+                        warnings.append(WarningItem(stage="extraction", message=f"Rejected extraction: source_text '{mem.source_text}' was not in user message."))
+                        continue
                 else:
-                    logger.warning("Rejected memory: source_text '%s' not found verbatim in user message.", mem.source_text)
-                    warnings.append(WarningItem(stage="extraction", message=f"Rejected extraction: source_text '{mem.source_text}' was not in user message."))
                     continue
 
             # Check 2: verify question guardrail (do not extract struggles from pure questions)
-            if "?" in mem.source_text and not any(p in mem.source_text.lower() for p in ["i ", "my ", "me "]):
+            if "?" in mem.source_text and not any(p in mem.source_text.lower() for p in ["i ", "my ", "me ", "i'm"]):
                 logger.warning("Rejected memory from question fragment: '%s'", mem.source_text)
                 continue
 
