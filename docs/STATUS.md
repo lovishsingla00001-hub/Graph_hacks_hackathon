@@ -1,0 +1,40 @@
+# RecallAI Project Status
+
+Updated: 2026-10-15 (Hackathon Event Window)
+
+## Current Status
+- **Phase**: Phase 1 Complete -> Starting Phase 2 (Memory Store, Seeding, /memories, Frontend Mock Shell)
+- **Branch**: `dev`
+
+## Done
+- [x] Inspected repo state and git log (clean dev branch on remote `origin/dev`).
+- [x] Verified local toolchains: Node.js v24.14.1, Python 3.14.3, Docker 29.8.2 & Docker Compose v5.6.0.
+- [x] Aligned on core architecture:
+  - FalkorDB primary memory graph database with graph-per-user isolation (`recallai_<user_id>`).
+  - Google Gemini (`gemini-3.8-flash`) as the selected LLM provider behind provider-agnostic `llm_client.py`.
+  - Strict API contract established in `docs/API_CONTRACT.md`.
+- [x] Created root `.gitignore` protecting env secrets, python artifacts, node_modules.
+- [x] Created root `.env.example` and `backend/.env.example`.
+- [x] Implemented `docker-compose.yml` with password protection, AOF persistence (`--appendonly yes --appendfsync everysec`), and 127.0.0.1 port bindings.
+- [x] Determined exact FalkorDB data directory inside container via `CONFIG GET dir` (`/var/lib/falkordb/data`) and mounted named volume `recallai_falkordb_data`.
+- [x] Proved database persistence across:
+  - Container restart with volume kept (`docker compose restart falkordb`).
+  - Container teardown and restart without `-v` (`docker compose down; docker compose up -d`).
+- [x] Built backend core foundation: `config.py`, `database.py`, `schemas.py`, `queries.py`, `routes/health.py`, `main.py`.
+- [x] Configured strict CORS middleware matching allowed Vite origins without wildcards.
+- [x] Created test suite: verified FalkorDB read/write smoke test and executed pytest suite for health checks and CORS preflight (4/4 passed).
+
+## In Progress
+- [ ] Phase 2: Memory store, idempotent concept graph seeding, `/memories` endpoint, and frontend mock shell.
+
+## Next
+- Phase 2: Memory store, idempotent seed graph, `/memories` endpoint, frontend mock shell.
+- Phase 3: Validated extraction, deduplication, and memory correction.
+- Phase 4: Prerequisite graph traversal retrieval and live chat pipeline.
+
+## Blocked
+- None currently.
+
+## Questions / Notes for Partner
+- Frontend owned by user, backend owned by partner. Shared files (`docker-compose.yml`, `docs/API_CONTRACT.md`, `README.md`) are coordinated before modification.
+- Always run `git pull --rebase origin dev` prior to working and prior to push.

@@ -1,0 +1,97 @@
+"""
+RecallAI Pydantic Schemas
+Single source of truth matching docs/API_CONTRACT.md.
+"""
+import re
+from typing import List, Optional, Literal
+from pydantic import BaseModel, Field, field_validator, ConfigDict
+
+USER_ID_REGEX = re.compile(r"^[a-z0-9_-]{3,40}$")
+SESSION_ID_REGEX = re.compile(r"^[a-z0-9_-]{3,64}$")
+
+# Health
+class HealthResponse(BaseModel):
+    status: Literal["ok", "degraded"]
+    database: Literal["connected", "disconnected"]
+    llm_configured: bool
+
+# Memory
+class MemoryItem(BaseModel):
+    id: str
+    kind: Literal["LEARNS", "STRUGGLES_WITH", "PREFERS", "GOAL"]
+    value: str
+    status: Literal["active", "resolved"]
+    origin: Literal["user_stated", "curated"]
+    source_text: str
+    session_id: str
+    created_at: str
+    action: Optional[Literal["created", "already_known", "resolved"]] = None
+
+# Evidence Traversal
+class EvidenceStep(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_node: str = Field(..., alias="from")
+    relation: str
+    to_node: str = Field(..., alias="to")
+    origin: Literal["You said", "Curated"]
+
+class EvidencePath(BaseModel):
+    steps: List[EvidenceStep]
+
+# Warnings
+class WarningItem(BaseModel):
+    stage: Literal["extraction", "memory_write", "retrieval", "llm", "log"]
+    message: str
+
+# Chat
+class ChatRequest(BaseModel):
+    user_id: str
+    session_id: str
+    message: str
+
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id(cls, v: str) -> str:
+        v = v.strip()
+        if not USER_ID_REGEX.match(v):
+            raise ValueError("user_id must match ^[a-z0-9_-]{3,40}$")
+        return v
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_session_id(cls, v: str) -> str:
+        v = v.strip()
+        if not SESSION_ID_REGEX.match(v):
+            raise ValueError("session_id must match ^[a-z0-9_-]{3,64}$")
+        return v
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("message cannot be empty")
+        if len(v) > 4000:
+            raise ValueError("message cannot exceed 4000 characters")
+        return v
+
+class ChatResponse(BaseModel):
+    reply: str
+    saved_memories: List[MemoryItem] = Field(default_factory=list)
+    retrieved_memories: List[MemoryItem] = Field(default_factory=list)
+    evidence_paths: List[EvidencePath] = Field(default_factory=list)
+    warnings: List[WarningItem] = Field(default_factory=list)
+    explanation: str
+
+# Memories Listing
+class MemoriesResponse(BaseModel):
+    memories: List[MemoryItem]
+
+# Error
+class ErrorDetail(BaseModel):
+    code: str
+    message: str
+
+class ErrorResponse(BaseModel):
+    error: ErrorDetail
