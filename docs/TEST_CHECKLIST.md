@@ -26,11 +26,11 @@
 ---
 
 ## 3. Extraction & Memory Integrity
-- [ ] **[NOT RUN]** Facts vs Questions: Questions ("What is recursion?") never saved as struggles (Phase 3).
+- [x] **[RUN - PASS]** Facts vs Questions: Questions ("What is recursion?") never saved as struggles.
 - [x] **[RUN - PASS]** Negation & Correction: "I no longer struggle with X" marks previous memory resolved, not deleted.
 - [x] **[RUN - PASS]** Deduplication: Repeated identical statements update/deduplicate rather than creating duplicate nodes.
-- [ ] **[NOT RUN]** Exact source text: `source_text` matches user input substring (Phase 3).
-- [ ] **[NOT RUN]** Schema validation: Extraction output strictly validates against Pydantic schema with at most one repair attempt (Phase 3).
+- [x] **[RUN - PASS]** Exact source text: `source_text` matches user input substring.
+- [x] **[RUN - PASS]** Schema validation: Extraction output strictly validates against Pydantic schema with at most one repair attempt.
 
 ---
 

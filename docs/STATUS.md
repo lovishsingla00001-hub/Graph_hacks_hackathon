@@ -3,7 +3,7 @@
 Updated: 2026-10-15 (Hackathon Event Window)
 
 ## Current Status
-- **Phase**: Phase 2 Complete -> Starting Phase 3 (Validated Extraction, Deduplication & Correction)
+- **Phase**: Phase 3 Complete -> Starting Phase 4 (Graph Retrieval, /chat Pipeline, and Live Frontend Connection)
 - **Branch**: `dev`
 
 ## Done
@@ -28,12 +28,14 @@ Updated: 2026-10-15 (Hackathon Event Window)
 - [x] Phase 2: Implemented `GET /memories` endpoint with input validation and registered in FastAPI app.
 - [x] Phase 2: Built full frontend shell with React + Vite, vanilla CSS, and offline mock adapter in `src/api.js`.
 - [x] Phase 2: Executed automated tests: 10 backend pytest tests passed; 7 frontend node:test tests passed; frontend build succeeded.
+- [x] Phase 3: Implemented provider-agnostic `llm_client.py` supporting Google Gemini (`gemini-3.8-flash`) and OpenAI/Groq fallback.
+- [x] Phase 3: Built `extraction.py` enforcing Pydantic schemas, verbatim `source_text` substrings, question-rejection guardrails, and single-repair recovery logic.
+- [x] Phase 3: Automated test suite in `test_extraction.py` (7/7 passed; total backend tests: 17/17 passed).
 
 ## In Progress
-- [ ] Phase 3: Validated LLM extraction with Pydantic schemas, exact source_text verification, repair logic, and correction handling.
+- [ ] Phase 4: Multi-hop graph prerequisite traversal retrieval, answer generation with prompt injection hygiene, `POST /chat` endpoint, and live frontend connection.
 
 ## Next
-- Phase 3: Validated extraction + dedupe + correction.
 - Phase 4: Retrieval + /chat + frontend connected live.
 - Phase 3: Validated extraction, deduplication, and memory correction.
 - Phase 4: Prerequisite graph traversal retrieval and live chat pipeline.

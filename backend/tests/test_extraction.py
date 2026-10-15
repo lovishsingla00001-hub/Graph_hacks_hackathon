@@ -1,0 +1,152 @@
+"""
+Tests for Validated Memory Extraction, Guardrails, and Repair Logic.
+Uses mocked LLM responses to test deterministic rule enforcement.
+"""
+import pytest
+from unittest.mock import MagicMock
+from backend.app.services.extraction import ExtractionService, ExtractedMemoryItem
+from backend.app.services.llm_client import LLMGenerationError
+
+def test_questions_are_not_facts_fast_path():
+    """
+    Questions like 'What is recursion?' must NEVER produce extracted memory.
+    """
+    service = ExtractionService()
+    memories, warnings = service.extract_memories("What is recursion?")
+    assert len(memories) == 0
+    assert len(warnings) == 0
+
+def test_questions_with_how_and_why_skipped():
+    """
+    Informational questions starting with How/Why/Can you explain are skipped.
+    """
+    service = ExtractionService()
+    memories, warnings = service.extract_memories("How do generators work in Python?")
+    assert len(memories) == 0
+
+def test_explicit_struggle_extraction():
+    """
+    Explicit user statement of struggle is extracted and validated.
+    """
+    service = ExtractionService()
+    # Mock LLM response
+    service._llm = MagicMock()
+    service._llm.generate_json.return_value = {
+        "memories": [
+            {
+                "kind": "STRUGGLES_WITH",
+                "value": "recursion",
+                "source_text": "I find recursion really tricky",
+                "is_correction": False,
+                "canonical_concept": "recursion"
+            }
+        ]
+    }
+
+    user_msg = "I find recursion really tricky, but I want to learn it."
+    memories, warnings = service.extract_memories(user_msg)
+    
+    assert len(memories) == 1
+    assert memories[0].kind == "STRUGGLES_WITH"
+    assert memories[0].value == "recursion"
+    assert memories[0].source_text == "I find recursion really tricky"
+    assert memories[0].is_correction is False
+    assert len(warnings) == 0
+
+def test_correction_statement_flagged():
+    """
+    'I no longer struggle with X' must be extracted with is_correction = True.
+    """
+    service = ExtractionService()
+    service._llm = MagicMock()
+    service._llm.generate_json.return_value = {
+        "memories": [
+            {
+                "kind": "STRUGGLES_WITH",
+                "value": "recursion",
+                "source_text": "I no longer struggle with recursion",
+                "is_correction": True,
+                "canonical_concept": "recursion"
+            }
+        ]
+    }
+
+    user_msg = "Great news! I no longer struggle with recursion after today's lesson."
+    memories, warnings = service.extract_memories(user_msg)
+
+    assert len(memories) == 1
+    assert memories[0].is_correction is True
+    assert memories[0].value == "recursion"
+
+def test_exact_source_text_rejection():
+    """
+    If the LLM hallucinates a source_text not found in the user message, it is rejected.
+    """
+    service = ExtractionService()
+    service._llm = MagicMock()
+    service._llm.generate_json.return_value = {
+        "memories": [
+            {
+                "kind": "STRUGGLES_WITH",
+                "value": "recursion",
+                "source_text": "This hallucinated text never appeared in the message",
+                "is_correction": False
+            }
+        ]
+    }
+
+    user_msg = "I am practicing Python exercises."
+    memories, warnings = service.extract_memories(user_msg)
+
+    # Must reject the fabricated source_text
+    assert len(memories) == 0
+    assert len(warnings) == 1
+    assert warnings[0].stage == "extraction"
+
+def test_repair_attempt_on_initial_failure():
+    """
+    If the first attempt fails, exactly one repair attempt is made.
+    """
+    service = ExtractionService()
+    service._llm = MagicMock()
+    
+    # First attempt raises error; second attempt succeeds
+    service._llm.generate_json.side_effect = [
+        LLMGenerationError("Invalid JSON format"),
+        {
+            "memories": [
+                {
+                    "kind": "PREFERS",
+                    "value": "visual analogies",
+                    "source_text": "I prefer visual analogies",
+                    "is_correction": False
+                }
+            ]
+        }
+    ]
+
+    user_msg = "Please teach me! I prefer visual analogies when learning."
+    memories, warnings = service.extract_memories(user_msg)
+
+    assert service._llm.generate_json.call_count == 2
+    assert len(memories) == 1
+    assert memories[0].kind == "PREFERS"
+    assert memories[0].value == "visual analogies"
+
+def test_failed_repair_returns_warning_without_crashing():
+    """
+    If both the initial extraction and the repair attempt fail, return empty memories and a warning.
+    """
+    service = ExtractionService()
+    service._llm = MagicMock()
+    service._llm.generate_json.side_effect = [
+        LLMGenerationError("First error"),
+        LLMGenerationError("Repair error")
+    ]
+
+    user_msg = "I find decorators hard."
+    memories, warnings = service.extract_memories(user_msg)
+
+    assert len(memories) == 0
+    assert len(warnings) == 1
+    assert warnings[0].stage == "extraction"
