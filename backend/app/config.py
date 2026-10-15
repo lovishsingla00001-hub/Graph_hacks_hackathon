@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
 
     # CORS Configuration: Comma-separated list of allowed origins
-    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
 
     # Optional Supabase Audit Trail (Disabled by default, write-only, Phase 7 only)
     SUPABASE_LOG_ENABLED: bool = False

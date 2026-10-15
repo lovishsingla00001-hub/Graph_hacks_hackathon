@@ -10,7 +10,7 @@
 - [x] **[RUN - PASS]** Basic write query via `g.query()` and read query via `g.ro_query()`.
 - [x] **[RUN - PASS]** **Persistence Test 3**: Database container restart with volume kept (`docker compose restart falkordb`) — node survived.
 - [x] **[RUN - PASS]** **Persistence Test 4**: Docker compose teardown without volume wipe (`docker compose down` then `up -d`) — node survived.
-- [ ] **[NOT RUN]** **Persistence Test 1**: New session retrieves existing user memories across sessions (Phase 4).
+- [x] **[RUN - PASS]** **Persistence Test 1**: New session retrieves existing user memories across sessions (`backend/tests/test_e2e_sessions_flow.py` and `test_chat_persistence_across_sessions`).
 - [ ] **[NOT RUN]** **Persistence Test 2**: Backend process restart preserves user memories in FalkorDB (Phase 5).
 
 ---
@@ -19,8 +19,8 @@
 - [x] **[RUN - PASS]** `GET /health` returns 200 OK with `database: "connected"` when FalkorDB is running.
 - [x] **[RUN - PASS]** `GET /health` returns 503 Service Unavailable when FalkorDB is stopped / mocked disconnected.
 - [x] **[RUN - PASS]** `GET /health` does not call paid LLM endpoints.
-- [x] **[RUN - PASS]** CORS preflight and headers correctly allow Vite origins (`http://localhost:5173` & `http://127.0.0.1:5173`) and reject disallowed origins.
-- [ ] **[NOT RUN]** `POST /chat` input validation (rejects invalid `user_id`, empty message, >4000 characters).
+- [x] **[RUN - PASS]** CORS preflight and headers correctly allow Vite origins (`http://localhost:5173`, `http://127.0.0.1:5173`, `http://localhost:5174`, `http://127.0.0.1:5174`) and reject disallowed origins.
+- [x] **[RUN - PASS]** `POST /chat` input validation (rejects invalid `user_id`, empty message, >4000 characters) (`backend/tests/test_chat.py::test_chat_validation_errors`).
 - [x] **[RUN - PASS]** `GET /memories` returns memories for specified `user_id` and validates format (422 on invalid).
 
 ---
@@ -29,23 +29,24 @@
 - [x] **[RUN - PASS]** Facts vs Questions: Questions ("What is recursion?") never saved as struggles.
 - [x] **[RUN - PASS]** Negation & Correction: "I no longer struggle with X" marks previous memory resolved, not deleted.
 - [x] **[RUN - PASS]** Deduplication: Repeated identical statements update/deduplicate rather than creating duplicate nodes.
-- [x] **[RUN - PASS]** Exact source text: `source_text` matches user input substring.
+- [x] **[RUN - PASS]** Exact source text: `source_text` matches user input substring (with casing and whitespace tolerance).
 - [x] **[RUN - PASS]** Schema validation: Extraction output strictly validates against Pydantic schema with at most one repair attempt.
+- [x] **[RUN - PASS]** Real Gemini live extraction evaluation across 5 test scenarios (all 5 passed).
 
 ---
 
 ## 4. Graph Retrieval & Education Reasoning
-- [ ] **[NOT RUN]** Direct concept match: Topic in message retrieves corresponding active memory (Phase 4).
-- [ ] **[NOT RUN]** Prerequisite traversal: 2-hop prerequisite traversal (`-[:REQUIRES]->`) pulls foundational concepts (Phase 4).
-- [ ] **[NOT RUN]** Pedagogical preference: Active `PREFERS` memories are included in context (Phase 4).
-- [ ] **[NOT RUN]** Irrelevant questions: Questions unrelated to user memory retrieve nothing (Phase 4).
-- [ ] **[NOT RUN]** Resolved memories excluded: Resolved memories are excluded from retrieval context (Phase 4).
-- [x] **[RUN - PASS]** User isolation: User B's queries never retrieve User A's memories or concepts.
+- [x] **[RUN - PASS]** Direct concept match: Topic in message retrieves corresponding active memory (`backend/tests/test_retrieval.py`).
+- [x] **[RUN - PASS]** Prerequisite traversal: 2-hop prerequisite traversal (`-[:REQUIRES]->`) pulls foundational concepts (`backend/tests/test_retrieval.py` and `backend/tests/test_e2e_sessions_flow.py`).
+- [x] **[RUN - PASS]** Pedagogical preference: Active `PREFERS` memories are included in context (`backend/tests/test_retrieval.py`).
+- [x] **[RUN - PASS]** Irrelevant questions: Questions unrelated to user memory retrieve nothing (`test_irrelevant_query_retrieves_nothing`).
+- [x] **[RUN - PASS]** Resolved memories excluded: Resolved memories are excluded from retrieval context (`test_resolved_memories_are_excluded_from_retrieval`).
+- [x] **[RUN - PASS]** User isolation: User B's queries never retrieve User A's memories or concepts (`test_user_isolation`).
 
 ---
 
 ## 5. Resilience & Error Handling
+- [x] **[RUN - PASS]** LLM failure after successful memory write returns HTTP 200 with saved memories and a stage warning (`backend/tests/test_chat.py::test_chat_partial_success_handling`).
+- [x] **[RUN - PASS]** Prompt injection attempt inside `source_text` is treated strictly as data inside `<user_stored_data>` (`test_prompt_injection_isolation_in_answer_generation`).
 - [ ] **[NOT RUN]** Database failure during chat returns structured error or graceful degraded response.
-- [ ] **[NOT RUN]** LLM failure after successful memory write returns HTTP 200 with saved memories and a stage warning.
-- [ ] **[NOT RUN]** Prompt injection attempt inside `source_text` is treated as data, not instruction.
-- [ ] **[NOT RUN]** Supabase logging disabled by default; failure never impacts chat turn.
+- [ ] **[NOT RUN]** Supabase logging disabled by default; failure never impacts chat turn (Phase 7).

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from backend.app.config import settings
-from backend.app.routes import health, memories
+from backend.app.routes import health, memories, chat
 
 app = FastAPI(
     title="RecallAI Backend",
@@ -41,6 +41,7 @@ def validation_exception_handler(request: Request, exc: RequestValidationError):
 # Include Route Handlers
 app.include_router(health.router)
 app.include_router(memories.router)
+app.include_router(chat.router)
 
 @app.get("/")
 def root():
