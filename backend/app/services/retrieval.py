@@ -58,11 +58,11 @@ class RetrievalService:
         self,
         user_id: str,
         message: str
-    ) -> Tuple[List[MemoryItem], List[EvidencePath], str]:
+    ) -> Tuple[List[MemoryItem], List[EvidencePath], str, List[str]]:
         """
         Retrieves relevant active memories and constructs real evidence paths
         via 2-hop prerequisite traversal in FalkorDB.
-        Returns (ranked_memories, evidence_paths, explanation).
+        Returns (ranked_memories, evidence_paths, explanation, prerequisite_concepts).
         """
         graph = self._db.get_user_graph(user_id)
         seed_curriculum_if_needed(graph)
@@ -74,9 +74,20 @@ class RetrievalService:
             prefs = self._get_active_preferences(graph, user_id)
             if prefs:
                 explanation = f"No specific curriculum concepts detected. Included {len(prefs)} general teaching preference(s)."
-                return prefs[:3], [], explanation
+                pref_paths = [
+                    EvidencePath(steps=[
+                        EvidenceStep(
+                            from_node="Student",
+                            relation="HAS_MEMORY",
+                            to_node=f'Memory("Prefers {p.value}")',
+                            origin="You said"
+                        )
+                    ])
+                    for p in prefs[:3]
+                ]
+                return prefs[:3], pref_paths, explanation, []
             else:
-                return [], [], "No relevant memories matched this query."
+                return [], [], "No relevant memories matched this query.", []
 
         # 2. Traverse Prerequisites (1-Hop and 2-Hop)
         prereq_1_hop_edges: List[Dict[str, str]] = []
@@ -147,53 +158,109 @@ class RetrievalService:
         # 4. Fetch user preferences
         prefs = self._get_active_preferences(graph, user_id)
 
-        # 5. Build Real Evidence Paths from returned edges
+        # Collect unique prerequisite concept IDs in discovery order
+        prereq_concept_ids = list(dict.fromkeys([
+            e["to_id"] for e in (prereq_1_hop_edges + prereq_2_hop_edges)
+            if e["to_id"] not in matched_concept_ids
+        ]))
+
+        # 5. Build Real Evidence Paths from returned edges:
+        # Pattern: Student -HAS_MEMORY-> Memory(...) -ABOUT-> Concept(...) -REQUIRES-> prereq1 -> prereq2
         evidence_paths: List[EvidencePath] = []
 
         for c_id in matched_concept_ids:
-            # Check if user has memory on this concept
+            concept_node = f"Concept({c_id})"
             user_has_memory = c_id in concept_memory_map and len(concept_memory_map[c_id]) > 0
 
-            # If user has a direct memory on this concept
+            # Prerequisite edges originating from c_id
+            edges_1 = [e for e in prereq_1_hop_edges if e["from_id"] == c_id]
+
             if user_has_memory:
-                # Steps start with (User)-[:HAS_MEMORY]->(Concept)
-                steps = [
-                    EvidenceStep(
-                        from_node=user_id,
-                        relation="HAS_MEMORY",
-                        to_node=c_id,
-                        origin="You said"
-                    )
-                ]
-                # Look for prerequisite edges originating from c_id
-                edges_1 = [e for e in prereq_1_hop_edges if e["from_id"] == c_id]
-                for e1 in edges_1:
-                    step1 = EvidenceStep(
-                        from_node=e1["from_id"],
-                        relation="REQUIRES",
-                        to_node=e1["to_id"],
-                        origin="Curated"
-                    )
-                    # Look for 2nd hop edges from e1["to_id"]
-                    edges_2 = [e for e in prereq_1_hop_edges if e["from_id"] == e1["to_id"]]
-                    if edges_2:
-                        for e2 in edges_2:
-                            steps_chain = steps + [
-                                step1,
-                                EvidenceStep(
-                                    from_node=e2["from_id"],
+                for mem in concept_memory_map[c_id]:
+                    # Format Memory node label exactly matching graph semantics
+                    if mem.kind == "STRUGGLES_WITH":
+                        mem_node = f'Memory("Struggles with {mem.value}")'
+                    elif mem.kind == "PREFERS":
+                        mem_node = f'Memory("Prefers {mem.value}")'
+                    elif mem.kind == "LEARNS":
+                        mem_node = f'Memory("Learns {mem.value}")'
+                    elif mem.kind == "GOAL":
+                        mem_node = f'Memory("Goal: {mem.value}")'
+                    else:
+                        mem_node = f'Memory("{mem.value}")'
+
+                    # Base chain: Student -HAS_MEMORY-> Memory(...) -ABOUT-> Concept(...)
+                    base_steps = [
+                        EvidenceStep(
+                            from_node="Student",
+                            relation="HAS_MEMORY",
+                            to_node=mem_node,
+                            origin="You said"
+                        ),
+                        EvidenceStep(
+                            from_node=mem_node,
+                            relation="ABOUT",
+                            to_node=concept_node,
+                            origin="Curated"
+                        )
+                    ]
+
+                    if edges_1:
+                        for e1 in edges_1:
+                            step1 = EvidenceStep(
+                                from_node=concept_node,
+                                relation="REQUIRES",
+                                to_node=e1["to_id"],
+                                origin="Curated"
+                            )
+                            # Look for 2nd hop edges from e1["to_id"]
+                            edges_2 = [e for e in prereq_1_hop_edges if e["from_id"] == e1["to_id"]]
+                            if edges_2:
+                                for e2 in edges_2:
+                                    step2 = EvidenceStep(
+                                        from_node=e1["to_id"],
+                                        relation="REQUIRES",
+                                        to_node=e2["to_id"],
+                                        origin="Curated"
+                                    )
+                                    evidence_paths.append(EvidencePath(steps=base_steps + [step1, step2]))
+                            else:
+                                evidence_paths.append(EvidencePath(steps=base_steps + [step1]))
+                    else:
+                        evidence_paths.append(EvidencePath(steps=base_steps))
+            else:
+                # Student has no prior memory on c_id, but concept requires prerequisites
+                if edges_1:
+                    for e1 in edges_1:
+                        step1 = EvidenceStep(
+                            from_node=concept_node,
+                            relation="REQUIRES",
+                            to_node=e1["to_id"],
+                            origin="Curated"
+                        )
+                        edges_2 = [e for e in prereq_1_hop_edges if e["from_id"] == e1["to_id"]]
+                        if edges_2:
+                            for e2 in edges_2:
+                                step2 = EvidenceStep(
+                                    from_node=e1["to_id"],
                                     relation="REQUIRES",
                                     to_node=e2["to_id"],
                                     origin="Curated"
                                 )
-                            ]
-                            evidence_paths.append(EvidencePath(steps=steps_chain))
-                    else:
-                        evidence_paths.append(EvidencePath(steps=steps + [step1]))
+                                evidence_paths.append(EvidencePath(steps=[step1, step2]))
+                        else:
+                            evidence_paths.append(EvidencePath(steps=[step1]))
 
-                if not edges_1:
-                    # Single step path
-                    evidence_paths.append(EvidencePath(steps=steps))
+        # Include preference memory paths
+        for p in prefs[:2]:
+            evidence_paths.append(EvidencePath(steps=[
+                EvidenceStep(
+                    from_node="Student",
+                    relation="HAS_MEMORY",
+                    to_node=f'Memory("Prefers {p.value}")',
+                    origin="You said"
+                )
+            ]))
 
         # 6. Rank: Direct Memories > Prerequisite Memories > Preferences (Cap ~8)
         # Deduplicate while preserving rank
@@ -235,7 +302,7 @@ class RetrievalService:
         else:
             explanation = "No relevant memories matched this query."
 
-        return ranked_memories, evidence_paths, explanation
+        return ranked_memories, evidence_paths, explanation, prereq_concept_ids
 
     def _get_active_preferences(self, graph, user_id: str) -> List[MemoryItem]:
         """Helper to fetch active PREFERS memories for a user."""

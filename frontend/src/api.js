@@ -162,10 +162,13 @@ async function mockChatTurn(userId, sessionId, message) {
     const prereq1 = mockCurriculumPrereqs[activeConcept] || "functions";
     const prereq2 = mockCurriculumPrereqs[prereq1] || "variables";
 
+    const memLabel = `Memory("Struggles with ${activeConcept}")`;
+    const conceptLabel = `Concept(${activeConcept})`;
     evidencePaths.push({
       steps: [
-        { from: userId, relation: "HAS_MEMORY", to: activeConcept, origin: "You said" },
-        { from: activeConcept, relation: "REQUIRES", to: prereq1, origin: "Curated" },
+        { from: "Student", relation: "HAS_MEMORY", to: memLabel, origin: "You said" },
+        { from: memLabel, relation: "ABOUT", to: conceptLabel, origin: "Curated" },
+        { from: conceptLabel, relation: "REQUIRES", to: prereq1, origin: "Curated" },
         { from: prereq1, relation: "REQUIRES", to: prereq2, origin: "Curated" }
       ]
     });

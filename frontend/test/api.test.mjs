@@ -44,12 +44,15 @@ test('mock sendChatMessage handles extraction and evidence paths', async () => {
   assert.ok(res.evidence_paths.length > 0);
   
   const steps = res.evidence_paths[0].steps;
-  assert.equal(steps[0].from, 'student_alice');
+  assert.equal(steps[0].from, 'Student');
   assert.equal(steps[0].relation, 'HAS_MEMORY');
-  assert.equal(steps[0].to, 'recursion');
-  assert.equal(steps[1].from, 'recursion');
-  assert.equal(steps[1].relation, 'REQUIRES');
-  assert.equal(steps[1].to, 'functions');
+  assert.equal(steps[0].to, 'Memory("Struggles with recursion")');
+  assert.equal(steps[1].from, 'Memory("Struggles with recursion")');
+  assert.equal(steps[1].relation, 'ABOUT');
+  assert.equal(steps[1].to, 'Concept(recursion)');
+  assert.equal(steps[2].from, 'Concept(recursion)');
+  assert.equal(steps[2].relation, 'REQUIRES');
+  assert.equal(steps[2].to, 'functions');
 });
 
 test('mock sendChatMessage handles correction to resolve memory', async () => {

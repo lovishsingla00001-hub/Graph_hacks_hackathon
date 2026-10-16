@@ -60,9 +60,10 @@ def chat_turn(request: ChatRequest) -> ChatResponse:
     retrieved_memories = []
     evidence_paths = []
     explanation = "No relevant memories matched this query."
+    prereq_concepts = []
 
     try:
-        retrieved_memories, evidence_paths, explanation = retrieval_service.retrieve_context(
+        retrieved_memories, evidence_paths, explanation, prereq_concepts = retrieval_service.retrieve_context(
             user_id=request.user_id,
             message=request.message
         )
@@ -75,22 +76,18 @@ def chat_turn(request: ChatRequest) -> ChatResponse:
     try:
         reply = answer_generation_service.generate_tutoring_answer(
             user_message=request.message,
-            retrieved_memories=retrieved_memories
+            retrieved_memories=retrieved_memories,
+            prerequisite_concepts=prereq_concepts
         )
     except Exception as e:
         logger.error("Answer generation failed: %s", e)
-        all_warnings.append(WarningItem(stage="llm", message=f"Answer generation error: {e}"))
-        # Partial success guarantee: If memory was successfully written, return HTTP 200 with warnings!
+        reason = str(e).strip()
+        all_warnings.append(WarningItem(stage="llm", message=f"Answer generation error: {reason}"))
+        # Partial success guarantee: Clearly labeled system message, never disguised as a tutor reply
         if saved_memories:
-            reply = (
-                "I have recorded your learning updates into your FalkorDB memory graph, "
-                "but encountered a temporary issue generating a full tutoring answer. Please ask your question again!"
-            )
+            reply = f"[System Message] Answer model unavailable: {reason}. Your memory was saved to your knowledge graph."
         else:
-            reply = (
-                "I am having trouble connecting to the language model right now. "
-                "Please check your API configuration or try again in a few moments."
-            )
+            reply = f"[System Message] Answer model unavailable: {reason}."
 
     return ChatResponse(
         reply=reply,

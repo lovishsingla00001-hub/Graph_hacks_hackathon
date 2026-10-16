@@ -62,11 +62,13 @@ export default function EvidenceInspector({ currentTurnData }) {
                       const originClass = (step.origin || '').toLowerCase().includes('you')
                         ? 'user-said'
                         : 'curated';
+                      const fromClass = step.from === 'Student' ? 'node-student' : step.from.startsWith('Memory(') ? 'node-memory' : step.from.startsWith('Concept(') ? 'node-concept' : 'node-term';
+                      const toClass = step.to === 'Student' ? 'node-student' : step.to.startsWith('Memory(') ? 'node-memory' : step.to.startsWith('Concept(') ? 'node-concept' : 'node-term';
                       return (
                         <div key={sIdx} className="path-step">
-                          <span className="path-node">{step.from}</span>
+                          <span className={`path-node ${fromClass}`}>{step.from}</span>
                           <span className="path-relation">─[:{step.relation}]─▶</span>
-                          <span className="path-node">{step.to}</span>
+                          <span className={`path-node ${toClass}`}>{step.to}</span>
                           <span className={`origin-badge ${originClass}`}>
                             {step.origin}
                           </span>

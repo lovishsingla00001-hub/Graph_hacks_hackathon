@@ -376,6 +376,26 @@ body {
   font-weight: 600;
 }
 
+.path-node.node-student {
+  color: #60a5fa;
+  font-weight: 700;
+}
+
+.path-node.node-memory {
+  color: #fbbf24;
+  font-style: italic;
+}
+
+.path-node.node-concept {
+  color: #c084fc;
+  font-weight: 600;
+}
+
+.path-node.node-term {
+  color: #34d399;
+  font-weight: 600;
+}
+
 .path-relation {
   color: var(--accent-purple);
   font-size: 0.78rem;

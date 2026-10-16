@@ -24,6 +24,20 @@ def test_questions_with_how_and_why_skipped():
     memories, warnings = service.extract_memories("How do generators work in Python?")
     assert len(memories) == 0
 
+def test_no_first_person_statements_skips_llm_call():
+    """
+    Messages with no first-person pronouns (e.g. commands, general questions)
+    must immediately skip extraction without invoking LLM generate_json.
+    """
+    service = ExtractionService()
+    service._llm = MagicMock()
+
+    memories, warnings = service.extract_memories("Explain recursive functions.")
+    assert len(memories) == 0
+    assert len(warnings) == 0
+    # LLM must NEVER be called
+    service._llm.generate_json.assert_not_called()
+
 def test_explicit_struggle_extraction():
     """
     Explicit user statement of struggle is extracted and validated.

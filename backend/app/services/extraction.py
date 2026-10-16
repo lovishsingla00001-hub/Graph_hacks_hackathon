@@ -5,12 +5,18 @@ Enforces strict guardrails: questions are never facts, source_text must be exact
 """
 import json
 import logging
+import re
 from typing import List, Optional, Literal, Tuple
 from pydantic import BaseModel, Field, field_validator
 from backend.app.services.llm_client import llm_client, LLMConfigurationError, LLMGenerationError
 from backend.app.schemas import WarningItem
 
 logger = logging.getLogger("recallai.extraction")
+
+FIRST_PERSON_PATTERN = re.compile(
+    r"\b(i|i'm|im|i've|ive|i'll|ill|my|mine|me|myself)\b",
+    re.IGNORECASE
+)
 
 class ExtractedMemoryItem(BaseModel):
     kind: Literal["LEARNS", "STRUGGLES_WITH", "PREFERS", "GOAL"]
@@ -75,9 +81,16 @@ class ExtractionService:
         if not user_msg_clean:
             return [], []
 
+        # Optimization & Guardrail: A personal learner memory (LEARNS, STRUGGLES_WITH, PREFERS, GOAL)
+        # by definition requires the user to state something about themselves ("I", "I'm", "my", "me").
+        # If no first-person tokens exist, skip extraction entirely to avoid unnecessary LLM calls.
+        if not FIRST_PERSON_PATTERN.search(user_msg_clean):
+            logger.debug("Fast path: User message contains no first-person statements. Skipping memory extraction.")
+            return [], []
+
         warnings: List[WarningItem] = []
 
-        # Fast path check for pure questions: "What is X?", "Why is X?", "How does X work?"
+        # Fast path check for pure questions even if containing personal pronouns (e.g. "What should I do?")
         lower_msg = user_msg_clean.lower()
         if (lower_msg.startswith(("what is", "what are", "how does", "how do", "why is", "why does", "explain to me what"))
             and "?" in lower_msg

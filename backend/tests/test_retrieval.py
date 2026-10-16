@@ -58,7 +58,7 @@ def test_prerequisite_traversal_and_evidence_steps():
     )
 
     # 3. Retrieve context for a question about recursion
-    retrieved_mems, evidence_paths, explanation = retrieval_service.retrieve_context(
+    retrieved_mems, evidence_paths, explanation, prereqs = retrieval_service.retrieve_context(
         user_id=TEST_USER_RETRIEVAL,
         message="Can you explain how recursive calls work?"
     )
@@ -68,20 +68,31 @@ def test_prerequisite_traversal_and_evidence_steps():
     assert any(m.value == "recursion" for m in retrieved_mems)
     assert any(m.kind == "PREFERS" for m in retrieved_mems)
 
-    # Verify evidence paths
+    # Verify prerequisite concepts list
+    assert len(prereqs) >= 1
+    assert "functions" in prereqs
+
+    # Verify evidence paths: Student -HAS_MEMORY-> Memory(...) -ABOUT-> Concept(...) -REQUIRES-> prereq
     assert len(evidence_paths) > 0
     first_path = evidence_paths[0]
-    assert len(first_path.steps) >= 2
-    # Step 1: User -> HAS_MEMORY -> Concept
-    assert first_path.steps[0].from_node == TEST_USER_RETRIEVAL
+    assert len(first_path.steps) >= 3
+
+    # Step 1: Student -> HAS_MEMORY -> Memory(...)
+    assert first_path.steps[0].from_node == "Student"
     assert first_path.steps[0].relation == "HAS_MEMORY"
-    assert first_path.steps[0].to_node == "recursion"
+    assert first_path.steps[0].to_node == 'Memory("Struggles with recursion")'
     assert first_path.steps[0].origin == "You said"
 
-    # Step 2: Concept -> REQUIRES -> Prerequisite Concept
-    assert first_path.steps[1].from_node == "recursion"
-    assert first_path.steps[1].relation == "REQUIRES"
+    # Step 2: Memory(...) -> ABOUT -> Concept(recursion)
+    assert first_path.steps[1].from_node == 'Memory("Struggles with recursion")'
+    assert first_path.steps[1].relation == "ABOUT"
+    assert first_path.steps[1].to_node == "Concept(recursion)"
     assert first_path.steps[1].origin == "Curated"
+
+    # Step 3: Concept(recursion) -> REQUIRES -> (prerequisite)
+    assert first_path.steps[2].from_node == "Concept(recursion)"
+    assert first_path.steps[2].relation == "REQUIRES"
+    assert first_path.steps[2].origin == "Curated"
 
     # Verify explanation string
     assert "Retrieved" in explanation
@@ -109,7 +120,7 @@ def test_resolved_memories_are_excluded_from_retrieval():
     )
 
     # 3. Retrieve context
-    retrieved_mems, evidence_paths, explanation = retrieval_service.retrieve_context(
+    retrieved_mems, evidence_paths, explanation, prereqs = retrieval_service.retrieve_context(
         user_id=TEST_USER_RETRIEVAL,
         message="Explain recursion to me"
     )
@@ -121,7 +132,7 @@ def test_irrelevant_query_retrieves_nothing():
     """
     Questions unrelated to programming concepts or user memory must retrieve nothing.
     """
-    retrieved_mems, evidence_paths, explanation = retrieval_service.retrieve_context(
+    retrieved_mems, evidence_paths, explanation, prereqs = retrieval_service.retrieve_context(
         user_id=TEST_USER_RETRIEVAL,
         message="What is the capital of France?"
     )
@@ -129,3 +140,4 @@ def test_irrelevant_query_retrieves_nothing():
     assert len(retrieved_mems) == 0
     assert len(evidence_paths) == 0
     assert "No relevant memories" in explanation
+    assert len(prereqs) == 0

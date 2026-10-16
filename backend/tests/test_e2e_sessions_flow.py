@@ -126,19 +126,27 @@ def test_multisession_memory_persistence_and_evidence(client: TestClient, monkey
     assert len(data2["evidence_paths"]) > 0
     first_path = data2["evidence_paths"][0]
     
-    # Path steps: Student -> HAS_MEMORY -> recursion -> REQUIRES -> (prerequisite)
+    # Path steps: Student -HAS_MEMORY-> Memory(...) -ABOUT-> Concept(recursion) -REQUIRES-> (prerequisite)
     step_0 = first_path["steps"][0]
-    assert step_0["from"] == DEMO_USER_ID
+    assert step_0["from"] == "Student"
     assert step_0["relation"] == "HAS_MEMORY"
-    assert step_0["to"] == "recursion"
+    assert step_0["to"] == 'Memory("Struggles with recursion")'
     assert step_0["origin"] == "You said"
 
-    # All second steps must be REQUIRES from recursion to a curated prerequisite
-    prereq_targets = {p["steps"][1]["to"] for p in data2["evidence_paths"]}
+    step_1 = first_path["steps"][1]
+    assert step_1["from"] == 'Memory("Struggles with recursion")'
+    assert step_1["relation"] == "ABOUT"
+    assert step_1["to"] == "Concept(recursion)"
+    assert step_1["origin"] == "Curated"
+
+    step_2 = first_path["steps"][2]
+    assert step_2["from"] == "Concept(recursion)"
+    assert step_2["relation"] == "REQUIRES"
+    assert step_2["origin"] == "Curated"
+
+    # All third steps must be REQUIRES from Concept(recursion) to a curated prerequisite
+    prereq_targets = {p["steps"][2]["to"] for p in data2["evidence_paths"]}
     assert "functions" in prereq_targets
-    assert all(p["steps"][1]["from"] == "recursion" for p in data2["evidence_paths"])
-    assert all(p["steps"][1]["relation"] == "REQUIRES" for p in data2["evidence_paths"])
-    assert all(p["steps"][1]["origin"] == "Curated" for p in data2["evidence_paths"])
 
     # 4. Deterministic explanation references the retrieved memory
     assert "Retrieved" in data2["explanation"]

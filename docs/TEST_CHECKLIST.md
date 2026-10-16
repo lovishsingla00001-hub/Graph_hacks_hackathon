@@ -32,12 +32,15 @@
 - [x] **[RUN - PASS]** Exact source text: `source_text` matches user input substring (with casing and whitespace tolerance).
 - [x] **[RUN - PASS]** Schema validation: Extraction output strictly validates against Pydantic schema with at most one repair attempt.
 - [x] **[RUN - PASS]** Real Gemini live extraction evaluation across 5 test scenarios (all 5 passed).
+- [x] **[RUN - PASS]** First-person pronoun guardrail: non-first-person messages bypass extraction immediately without calling LLM (`backend/tests/test_extraction.py::test_no_first_person_statements_skips_llm_call`).
 
 ---
 
 ## 4. Graph Retrieval & Education Reasoning
 - [x] **[RUN - PASS]** Direct concept match: Topic in message retrieves corresponding active memory (`backend/tests/test_retrieval.py`).
 - [x] **[RUN - PASS]** Prerequisite traversal: 2-hop prerequisite traversal (`-[:REQUIRES]->`) pulls foundational concepts (`backend/tests/test_retrieval.py` and `backend/tests/test_e2e_sessions_flow.py`).
+- [x] **[RUN - PASS]** Real continuous graph evidence paths: `Student -HAS_MEMORY-> Memory -ABOUT-> Concept -REQUIRES-> prereqs` (`backend/tests/test_retrieval.py` and `backend/tests/test_e2e_sessions_flow.py`).
+- [x] **[RUN - PASS]** Answer generation prompt receives prerequisite concepts and PREFERS memories, and instructs tutor to teach prerequisites first (`backend/tests/test_chat.py::test_answer_generation_prompt_prerequisites_and_preferences`).
 - [x] **[RUN - PASS]** Pedagogical preference: Active `PREFERS` memories are included in context (`backend/tests/test_retrieval.py`).
 - [x] **[RUN - PASS]** Irrelevant questions: Questions unrelated to user memory retrieve nothing (`test_irrelevant_query_retrieves_nothing`).
 - [x] **[RUN - PASS]** Resolved memories excluded: Resolved memories are excluded from retrieval context (`test_resolved_memories_are_excluded_from_retrieval`).
@@ -46,7 +49,7 @@
 ---
 
 ## 5. Resilience & Error Handling
-- [x] **[RUN - PASS]** LLM failure after successful memory write returns HTTP 200 with saved memories and a stage warning (`backend/tests/test_chat.py::test_chat_partial_success_handling`).
+- [x] **[RUN - PASS]** Clearly labeled system error message returned when LLM model is unavailable, preserving memory write (`backend/tests/test_chat.py::test_chat_partial_success_handling`).
 - [x] **[RUN - PASS]** Prompt injection attempt inside `source_text` is treated strictly as data inside `<user_stored_data>` (`test_prompt_injection_isolation_in_answer_generation`).
 - [ ] **[NOT RUN]** Database failure during chat returns structured error or graceful degraded response.
 - [ ] **[NOT RUN]** Supabase logging disabled by default; failure never impacts chat turn (Phase 7).
