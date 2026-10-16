@@ -3,7 +3,7 @@ RecallAI Chat Turn Route
 POST /chat endpoint executing the complete Agent Memory & Tutoring pipeline.
 """
 import logging
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from backend.app.schemas import ChatRequest, ChatResponse, WarningItem, MemoryItem
 from backend.app.services.extraction import extraction_service
 from backend.app.services.memory_store import memory_store
@@ -24,12 +24,6 @@ def chat_turn(request: ChatRequest) -> ChatResponse:
     4. Traverses 2-hop prerequisite graph to retrieve relevant context and real evidence.
     5. Synthesizes a personalized educational response using retrieved context as data.
     """
-    if "/simulate-error" in request.message:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Simulated 500 error from /simulate-error command."
-        )
-
     all_warnings: list[WarningItem] = []
     saved_memories: list[MemoryItem] = []
 
@@ -40,8 +34,6 @@ def chat_turn(request: ChatRequest) -> ChatResponse:
     # Step 2: Store or Resolve Memories in FalkorDB
     for item in extracted_items:
         try:
-            if "/simulate-write-failure" in request.message:
-                raise RuntimeError("Simulated FalkorDB write failure for /simulate-write-failure command")
             if item.is_correction:
                 resolved = memory_store.resolve_memory(
                     user_id=request.user_id,

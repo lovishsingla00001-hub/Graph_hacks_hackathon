@@ -584,22 +584,27 @@ def test_scenario_13_strict_user_isolation(client: TestClient, monkeypatch):
 def test_scenario_14_error_handling_and_warnings(client: TestClient, monkeypatch):
     """
     Scenario 14: Error handling and warnings:
-    - /simulate-error raises 500 error handled gracefully.
-    - /simulate-write-failure returns 200 with warnings array entry.
+    - Unhandled exception during extraction yields 500 error.
+    - Simulated database write failure is caught gracefully, returning 200 with warnings array entry.
     """
     user_id = "eval_user_s14"
     cleanup_user(user_id)
 
-    # 1. 500 simulate-error
-    res_err = client.post("/chat", json={
+    # 1. 500 on unhandled exception in pipeline
+    monkeypatch.setattr(
+        extraction_service,
+        "extract_memories",
+        MagicMock(side_effect=RuntimeError("Simulated unexpected internal failure"))
+    )
+    error_client = TestClient(app, raise_server_exceptions=False)
+    res_err = error_client.post("/chat", json={
         "user_id": user_id,
         "session_id": "sess_s14",
-        "message": "/simulate-error please"
+        "message": "Testing server failure handling"
     })
     assert res_err.status_code == 500
-    assert "Simulated 500 error" in res_err.json()["detail"]
 
-    # 2. simulate-write-failure: extraction succeeds, memory write is simulated to fail with warning
+    # 2. Memory write failure: extraction succeeds, but database write fails
     monkeypatch.setattr(
         extraction_service,
         "extract_memories",
@@ -615,16 +620,22 @@ def test_scenario_14_error_handling_and_warnings(client: TestClient, monkeypatch
             []
         )
     )
+    monkeypatch.setattr(
+        memory_store,
+        "save_memory",
+        MagicMock(side_effect=RuntimeError("FalkorDB timeout during save"))
+    )
 
     res_warn = client.post("/chat", json={
         "user_id": user_id,
         "session_id": "sess_s14",
-        "message": "I struggle with recursion /simulate-write-failure"
+        "message": "I struggle with recursion."
     })
     assert res_warn.status_code == 200
     data_warn = res_warn.json()
     assert len(data_warn["warnings"]) > 0
     assert data_warn["warnings"][0]["stage"] == "memory_write"
+    assert "FalkorDB timeout during save" in data_warn["warnings"][0]["message"]
     cleanup_user(user_id)
 
 
