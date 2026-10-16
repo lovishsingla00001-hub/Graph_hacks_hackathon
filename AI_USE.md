@@ -9,7 +9,7 @@ In compliance with the Hackathon Transparency Guidelines for **Graph Hacks: Cont
 | Tool | Provider | Purpose & Usage Scope |
 | :--- | :--- | :--- |
 | **Antigravity IDE & Agentic Pair Programmer** | Google DeepMind | Interactive pair-programming agent used for code generation, test scaffolding, automated documentation, and live terminal sandbox execution. |
-| **Google Gemini 3.8 Flash** | Google Cloud Vertex / AI Studio | LLM model used at runtime for learner fact extraction (few-shot JSON extraction) and personalized pedagogical tutoring response generation. |
+| **Google Gemini 3.8 Flash (`gemini-3.8-flash`)** | Google Cloud Vertex / AI Studio | Model configured via `LLM_MODEL` in `backend/app/config.py` and `.env.example`. Used at runtime for learner fact extraction (few-shot JSON extraction) and personalized pedagogical tutoring response generation. |
 | **OpenAI / Groq (Fallback)** | OpenAI / Groq | Configured runtime fallback providers for LLM extraction and tutoring if primary quota limits are reached. |
 
 ---

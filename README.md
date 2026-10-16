@@ -34,13 +34,25 @@ Follow these exact steps from a fresh clone to run the entire system locally:
 
 ### 1. Prerequisites
 - **Docker & Docker Compose** (v20+ / Compose v2+)
-- **Python 3.10+** (Python 3.11–3.14 supported)
+- **Python 3.14** (tested: Python 3.14.3)
 - **Node.js 18+** & npm
 
 ### 2. Start FalkorDB (Primary Graph Database)
+Generate a strong database password:
+```bash
+# Generate a random 16-byte hex password (choose one):
+openssl rand -hex 16
+# or using Python:
+python -c "import secrets; print(secrets.token_hex(16))"
+```
+
 ```bash
 # 1. Copy the root environment file
 cp .env.example .env
+
+# Set your generated password in .env:
+# FALKORDB_PASSWORD=<your_generated_password>
+# Note: docker-compose requires FALKORDB_PASSWORD and will error if unset.
 
 # 2. Launch the FalkorDB container with persistent volume
 docker compose up -d
@@ -70,8 +82,9 @@ cp backend/.env.example backend/.env
 ```
 
 Open `backend/.env` and verify your configuration:
-- `FALKORDB_PASSWORD`: Matches root `.env` and `docker-compose.yml` (default: `recallai_secret_pass_2026`).
+- `FALKORDB_PASSWORD`: Matches the `FALKORDB_PASSWORD` set in root `.env` and used by `docker-compose.yml` (required; no hard-coded default).
 - `LLM_PROVIDER`: `gemini` (default)
+- `LLM_MODEL`: `gemini-3.8-flash` (Google Gemini 3.8 Flash configured as primary extraction and tutoring model in `backend/app/config.py`)
 - `GEMINI_API_KEY`: Add your Google Gemini API key here for live tutoring. (Automated tests run completely mocked without requiring an API key).
 
 Start the FastAPI server:
@@ -94,6 +107,59 @@ npm run dev
 Open your browser at `http://localhost:5173`.
 - Set **User ID**: `student_alice`
 - The top-right connection badge will display **"Backend: Connected"** and **"API Mode: Live"**.
+
+---
+
+## 🎮 Run the Demo
+
+Follow these exact interactive steps in the web app (`http://localhost:5173`) to observe RecallAI's graph-native memory, prerequisite traversals, and multi-session continuity:
+
+### Turn 1: Express Struggles & Pedagogical Preferences
+- **User ID**: `student_alice`
+- **Type message**:
+  ```text
+  I'm learning Python, struggle with recursion, and prefer small examples.
+  ```
+- **What to observe**:
+  - **Memory Panel (Left)**: 3 active memories appear instantly:
+    - `LEARNS: python`
+    - `STRUGGLES_WITH: recursion` (linked to `Concept(recursion)`)
+    - `PREFERS: small examples`
+  - **Evidence Inspector (Right)**: Shows real graph paths stored in FalkorDB.
+
+### Turn 2: Prerequisite Graph Traversal in Action
+- **Type message**:
+  ```text
+  Can you explain how recursion works?
+  ```
+- **What to observe**:
+  - **Evidence Inspector**: FalkorDB executes a 2-hop prerequisite traversal:
+    $$\text{Concept(recursion)} \xrightarrow{\text{REQUIRES}} \text{Concept(functions)} \xrightarrow{\text{REQUIRES}} \text{Concept(variables)}$$
+    Origin labels: `ABOUT` labeled as **"You said"**, `REQUIRES` labeled as **"Curated"**.
+  - **Tutor Response**: Teaches prerequisites first (base cases, call stack) and honors the preference by providing concise code snippets.
+
+### Turn 3: Memory Correction & Dynamic Resolution
+- **Type message**:
+  ```text
+  I no longer struggle with recursion, but generators confuse me.
+  ```
+- **What to observe**:
+  - **Memory Panel**: The previous `recursion` card transitions to a dashed border with a **`RESOLVED`** badge. A new active struggle card for `generators` is created.
+
+### Turn 4: Multi-Session Memory Continuity
+- **Action**: Click the **"New Session"** button in the top header bar (clears chat history, starts new session `sess_2` for `student_alice`).
+- **Type message**:
+  ```text
+  How should I write my first generator?
+  ```
+- **What to observe**:
+  - Even though the chat history was cleared, RecallAI recalls Alice's persistent struggle (`generators`) and preference (`small examples`) from FalkorDB, and retrieves prerequisite concepts (`functions`, `loops`).
+
+### Turn 5: Strict Multi-Tenant User Isolation
+- **Action**: Change **User ID** in the header to `student_bob`.
+- **What to observe**:
+  - The memory panel immediately displays **"Active Memories (0)"**.
+  - Student Alice's graph (`recallai_student_alice`) is strictly isolated from Bob's graph (`recallai_student_bob`), ensuring zero cross-student data leakage.
 
 ---
 
