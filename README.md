@@ -70,7 +70,7 @@ cp backend/.env.example backend/.env
 ```
 
 Open `backend/.env` and verify your configuration:
-- `FALKORDB_PASSWORD`: Matches `docker-compose.yml` (`recallai_dev_password_2026`).
+- `FALKORDB_PASSWORD`: Matches root `.env` and `docker-compose.yml` (default: `recallai_secret_pass_2026`).
 - `LLM_PROVIDER`: `gemini` (default)
 - `GEMINI_API_KEY`: Add your Google Gemini API key here for live tutoring. (Automated tests run completely mocked without requiring an API key).
 

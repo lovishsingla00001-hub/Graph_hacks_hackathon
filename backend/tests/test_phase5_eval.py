@@ -17,7 +17,7 @@ Scenarios Covered:
 11. Idempotent deduplication prevents duplicate active nodes for repeated statements.
 12. 2-hop prerequisite graph traversal and evidence step origin verification ('You said' vs 'Curated').
 13. Strict multi-tenant user isolation between different student graphs.
-14. Error handling: 500 on simulate-error, 200 with warnings on simulate-write-failure.
+14. Error handling: 500 on unhandled exception, 200 with warnings on simulated storage failure.
 15. Prompt injection hygiene in stored memory data tags.
 16. Input validation rejections (empty messages, invalid user IDs).
 17. Multi-session continuity across different session IDs for the same student.
