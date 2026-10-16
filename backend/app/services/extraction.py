@@ -13,8 +13,10 @@ from backend.app.schemas import WarningItem
 
 logger = logging.getLogger("recallai.extraction")
 
-FIRST_PERSON_PATTERN = re.compile(
-    r"\b(i|i'm|im|i've|ive|i'll|ill|my|mine|me|myself)\b",
+# Matches first-person pronouns OR personal memory cue stems
+MEMORY_CUE_PATTERN = re.compile(
+    r"\b(i|i'm|im|i've|ive|i'll|ill|my|mine|me|myself)\b|"
+    r"\b(struggl\w*|prefer\w*|learn\w*|confus\w*|difficult\w*|hard\s+for|no\s+longer|goal\w*|want\s+to)\b",
     re.IGNORECASE
 )
 
@@ -82,10 +84,11 @@ class ExtractionService:
             return [], []
 
         # Optimization & Guardrail: A personal learner memory (LEARNS, STRUGGLES_WITH, PREFERS, GOAL)
-        # by definition requires the user to state something about themselves ("I", "I'm", "my", "me").
-        # If no first-person tokens exist, skip extraction entirely to avoid unnecessary LLM calls.
-        if not FIRST_PERSON_PATTERN.search(user_msg_clean):
-            logger.debug("Fast path: User message contains no first-person statements. Skipping memory extraction.")
+        # requires either a first-person statement ("I", "my", "me") OR a pedagogical cue word
+        # (e.g. "struggling", "prefer", "confused", "difficult", "no longer").
+        # If none of these cues exist (e.g. "Explain recursive functions"), skip extraction immediately.
+        if not MEMORY_CUE_PATTERN.search(user_msg_clean):
+            logger.debug("Fast path: User message contains no personal cues or pronouns. Skipping memory extraction.")
             return [], []
 
         warnings: List[WarningItem] = []

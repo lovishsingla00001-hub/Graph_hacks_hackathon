@@ -26,7 +26,7 @@ def test_questions_with_how_and_why_skipped():
 
 def test_no_first_person_statements_skips_llm_call():
     """
-    Messages with no first-person pronouns (e.g. commands, general questions)
+    Messages with no personal pronouns and no cue words (e.g. commands, general questions)
     must immediately skip extraction without invoking LLM generate_json.
     """
     service = ExtractionService()
@@ -36,6 +36,53 @@ def test_no_first_person_statements_skips_llm_call():
     assert len(memories) == 0
     assert len(warnings) == 0
     # LLM must NEVER be called
+    service._llm.generate_json.assert_not_called()
+
+def test_cue_words_without_pronouns_reach_extraction():
+    """
+    Messages containing personal cue words (prefer, struggling) even without explicit pronouns
+    MUST reach extraction, while commands without cue words MUST NOT.
+    """
+    service = ExtractionService()
+    service._llm = MagicMock()
+
+    # 1. "Prefer small examples." contains cue word "prefer" -> MUST reach extraction
+    service._llm.generate_json.return_value = {
+        "memories": [
+            {
+                "kind": "PREFERS",
+                "value": "small examples",
+                "source_text": "Prefer small examples",
+                "is_correction": False
+            }
+        ]
+    }
+    mems, _ = service.extract_memories("Prefer small examples.")
+    assert len(mems) == 1
+    assert mems[0].kind == "PREFERS"
+    assert service._llm.generate_json.call_count == 1
+
+    # 2. "Struggling with recursion." contains cue word "struggl" -> MUST reach extraction
+    service._llm.generate_json.reset_mock()
+    service._llm.generate_json.return_value = {
+        "memories": [
+            {
+                "kind": "STRUGGLES_WITH",
+                "value": "recursion",
+                "source_text": "Struggling with recursion",
+                "is_correction": False
+            }
+        ]
+    }
+    mems, _ = service.extract_memories("Struggling with recursion.")
+    assert len(mems) == 1
+    assert mems[0].kind == "STRUGGLES_WITH"
+    assert service._llm.generate_json.call_count == 1
+
+    # 3. "Explain recursive functions." has neither pronouns nor cue words -> MUST NOT reach extraction
+    service._llm.generate_json.reset_mock()
+    mems, _ = service.extract_memories("Explain recursive functions.")
+    assert len(mems) == 0
     service._llm.generate_json.assert_not_called()
 
 def test_explicit_struggle_extraction():

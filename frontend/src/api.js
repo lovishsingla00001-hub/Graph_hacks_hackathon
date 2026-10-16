@@ -167,7 +167,7 @@ async function mockChatTurn(userId, sessionId, message) {
     evidencePaths.push({
       steps: [
         { from: "Student", relation: "HAS_MEMORY", to: memLabel, origin: "You said" },
-        { from: memLabel, relation: "ABOUT", to: conceptLabel, origin: "Curated" },
+        { from: memLabel, relation: "ABOUT", to: conceptLabel, origin: "You said" },
         { from: conceptLabel, relation: "REQUIRES", to: prereq1, origin: "Curated" },
         { from: prereq1, relation: "REQUIRES", to: prereq2, origin: "Curated" }
       ]

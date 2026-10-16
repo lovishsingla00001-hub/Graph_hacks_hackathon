@@ -87,7 +87,7 @@ def test_prerequisite_traversal_and_evidence_steps():
     assert first_path.steps[1].from_node == 'Memory("Struggles with recursion")'
     assert first_path.steps[1].relation == "ABOUT"
     assert first_path.steps[1].to_node == "Concept(recursion)"
-    assert first_path.steps[1].origin == "Curated"
+    assert first_path.steps[1].origin == "You said"
 
     # Step 3: Concept(recursion) -> REQUIRES -> (prerequisite)
     assert first_path.steps[2].from_node == "Concept(recursion)"

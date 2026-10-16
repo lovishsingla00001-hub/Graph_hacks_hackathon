@@ -137,7 +137,7 @@ def test_multisession_memory_persistence_and_evidence(client: TestClient, monkey
     assert step_1["from"] == 'Memory("Struggles with recursion")'
     assert step_1["relation"] == "ABOUT"
     assert step_1["to"] == "Concept(recursion)"
-    assert step_1["origin"] == "Curated"
+    assert step_1["origin"] == "You said"
 
     step_2 = first_path["steps"][2]
     assert step_2["from"] == "Concept(recursion)"

@@ -201,7 +201,7 @@ class RetrievalService:
                             from_node=mem_node,
                             relation="ABOUT",
                             to_node=concept_node,
-                            origin="Curated"
+                            origin="You said"
                         )
                     ]
 
