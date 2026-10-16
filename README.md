@@ -84,7 +84,7 @@ cp backend/.env.example backend/.env
 Open `backend/.env` and verify your configuration:
 - `FALKORDB_PASSWORD`: Matches the `FALKORDB_PASSWORD` set in root `.env` and used by `docker-compose.yml` (required; no hard-coded default).
 - `LLM_PROVIDER`: `gemini` (default)
-- `LLM_MODEL`: `gemini-3.8-flash` (Google Gemini 3.8 Flash configured as primary extraction and tutoring model in `backend/app/config.py`)
+- `LLM_MODEL`: `gemini-3.8-flash` (Google Gemini 3.8 Flash is configured as the default model; setting `LLM_MODEL` in `backend/.env` overrides it to any supported model such as `gemini-2.5-flash`, `gpt-4o-mini`, etc.)
 - `GEMINI_API_KEY`: Add your Google Gemini API key here for live tutoring. (Automated tests run completely mocked without requiring an API key).
 
 Start the FastAPI server:
@@ -192,11 +192,14 @@ node --test test/api.test.mjs
    - Hard kernel panics, abrupt machine power-cuts, or dirty ungraceful process terminations were not stress-tested.
 4. **Single-User Graph Boundary**:
    - Isolation is enforced at the graph namespace boundary (`recallai_<user_id>`). Inter-student collaborative memory or classroom-level aggregation is outside the scope of this hackathon submission.
+5. **Free-Tier Gemini API Quota Constraints**:
+   - The free-tier Google Gemini API quota is strictly limited (approximately 20 requests per day on free-tier keys). A complete interactive demo run across 4–5 turns consumes approximately 8 API calls (extraction + generation per turn). As a result, repeated live interactive demo sessions can quickly exhaust daily free-tier quota. For unlimited continuous and regression testing, our automated test suite (`pytest backend/tests -v`) is 100% mocked and consumes zero API quota.
 
 ---
 
 ## 📚 Project Documentation
 
+- [docs/SUBMISSION_CHECKLIST.md](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/docs/SUBMISSION_CHECKLIST.md): Official WeMakeDevs x FalkorDB submission checklist mapping all requirements.
 - [docs/ARCHITECTURE.md](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/docs/ARCHITECTURE.md): Complete system architecture, 5-stage pipeline, and sequence diagrams.
 - [docs/QUERIES.md](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/docs/QUERIES.md): Full reference of all 15 parameterized Cypher queries.
 - [docs/DEMO_SCRIPT.md](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/docs/DEMO_SCRIPT.md): Step-by-step evaluation script for judges.
