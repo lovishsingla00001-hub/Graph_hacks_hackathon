@@ -11,7 +11,7 @@
 - [x] **[RUN - PASS]** **Persistence Test 3**: Database container restart with volume kept (`docker compose restart falkordb`) — node survived.
 - [x] **[RUN - PASS]** **Persistence Test 4**: Docker compose teardown without volume wipe (`docker compose down` then `up -d`) — node survived.
 - [x] **[RUN - PASS]** **Persistence Test 1**: New session retrieves existing user memories across sessions (`backend/tests/test_e2e_sessions_flow.py` and `test_chat_persistence_across_sessions`).
-- [ ] **[NOT RUN]** **Persistence Test 2**: Backend process restart preserves user memories in FalkorDB (Phase 5).
+- [x] **[RUN - PASS]** **Persistence Test 2**: Backend process restart preserves user memories in FalkorDB (verified across distinct Python process lifecycles against live FalkorDB).
 
 ---
 
@@ -32,14 +32,14 @@
 - [x] **[RUN - PASS]** Exact source text: `source_text` matches user input substring (with casing and whitespace tolerance).
 - [x] **[RUN - PASS]** Schema validation: Extraction output strictly validates against Pydantic schema with at most one repair attempt.
 - [x] **[RUN - PASS]** Real Gemini live extraction evaluation across 5 test scenarios (all 5 passed).
-- [x] **[RUN - PASS]** First-person pronoun guardrail: non-first-person messages bypass extraction immediately without calling LLM (`backend/tests/test_extraction.py::test_no_first_person_statements_skips_llm_call`).
+- [x] **[RUN - PASS]** First-person pronoun & cue word guardrail: non-first-person messages without cue words bypass extraction immediately without calling LLM (`backend/tests/test_extraction.py::test_no_first_person_statements_skips_llm_call` and `test_cue_words_without_pronouns_reach_extraction`).
 
 ---
 
 ## 4. Graph Retrieval & Education Reasoning
 - [x] **[RUN - PASS]** Direct concept match: Topic in message retrieves corresponding active memory (`backend/tests/test_retrieval.py`).
 - [x] **[RUN - PASS]** Prerequisite traversal: 2-hop prerequisite traversal (`-[:REQUIRES]->`) pulls foundational concepts (`backend/tests/test_retrieval.py` and `backend/tests/test_e2e_sessions_flow.py`).
-- [x] **[RUN - PASS]** Real continuous graph evidence paths: `Student -HAS_MEMORY-> Memory -ABOUT-> Concept -REQUIRES-> prereqs` (`backend/tests/test_retrieval.py` and `backend/tests/test_e2e_sessions_flow.py`).
+- [x] **[RUN - PASS]** Real continuous graph evidence paths: `Student -HAS_MEMORY-> Memory -ABOUT-> Concept -REQUIRES-> prereqs` (`backend/tests/test_retrieval.py` and `backend/tests/test_e2e_sessions_flow.py`). Step origin `ABOUT` labeled "You said"; only `REQUIRES` labeled "Curated".
 - [x] **[RUN - PASS]** Answer generation prompt receives prerequisite concepts and PREFERS memories, and instructs tutor to teach prerequisites first (`backend/tests/test_chat.py::test_answer_generation_prompt_prerequisites_and_preferences`).
 - [x] **[RUN - PASS]** Pedagogical preference: Active `PREFERS` memories are included in context (`backend/tests/test_retrieval.py`).
 - [x] **[RUN - PASS]** Irrelevant questions: Questions unrelated to user memory retrieve nothing (`test_irrelevant_query_retrieves_nothing`).
@@ -50,6 +50,28 @@
 
 ## 5. Resilience & Error Handling
 - [x] **[RUN - PASS]** Clearly labeled system error message returned when LLM model is unavailable, preserving memory write (`backend/tests/test_chat.py::test_chat_partial_success_handling`).
-- [x] **[RUN - PASS]** Prompt injection attempt inside `source_text` is treated strictly as data inside `<user_stored_data>` (`test_prompt_injection_isolation_in_answer_generation`).
-- [ ] **[NOT RUN]** Database failure during chat returns structured error or graceful degraded response.
+- [x] **[RUN - PASS]** Prompt injection attempt inside `source_text` is treated strictly as data inside `<user_stored_data>` (`test_prompt_injection_isolation_in_answer_generation` and `test_scenario_15_prompt_injection_safety`).
+- [x] **[RUN - PASS]** Database write failure simulation (`/simulate-write-failure`) caught gracefully, returning 200 with WarningItem(stage="memory_write") (`backend/tests/test_phase5_eval.py::test_scenario_14_error_handling_and_warnings`).
+- [x] **[RUN - PASS]** Server error simulation (`/simulate-error`) returns HTTP 500 error (`backend/tests/test_phase5_eval.py::test_scenario_14_error_handling_and_warnings`).
 - [ ] **[NOT RUN]** Supabase logging disabled by default; failure never impacts chat turn (Phase 7).
+
+---
+
+## 6. Phase 5 Comprehensive Evaluation Suite (17 Scenarios)
+- [x] **[RUN - PASS]** Scenario 1: Pure concept question fast-path (`backend/tests/test_phase5_eval.py::test_scenario_01_pure_concept_question_bypasses_extraction`).
+- [x] **[RUN - PASS]** Scenario 2: Command without pronouns fast-path (`backend/tests/test_phase5_eval.py::test_scenario_02_command_without_pronouns_bypasses_extraction`).
+- [x] **[RUN - PASS]** Scenario 3: Command with pronoun matches pronoun filter, returns 0 facts (`backend/tests/test_phase5_eval.py::test_scenario_03_command_with_pronoun_no_facts`).
+- [x] **[RUN - PASS]** Scenario 4: Explicit struggle statement extracts and saves (`backend/tests/test_phase5_eval.py::test_scenario_04_explicit_struggle_statement`).
+- [x] **[RUN - PASS]** Scenario 5: Elliptical struggle with cue word reaches extraction and saves (`backend/tests/test_phase5_eval.py::test_scenario_05_elliptical_struggle_cue_without_pronoun`).
+- [x] **[RUN - PASS]** Scenario 6: Pedagogical preference cue reaches extraction and saves (`backend/tests/test_phase5_eval.py::test_scenario_06_pedagogical_preference_cue_without_pronoun`).
+- [x] **[RUN - PASS]** Scenario 7: Explicit learning topic statement extracts and saves (`backend/tests/test_phase5_eval.py::test_scenario_07_explicit_learning_topic`).
+- [x] **[RUN - PASS]** Scenario 8: Learning goal statement extracts and saves (`backend/tests/test_phase5_eval.py::test_scenario_08_learning_goal_statement`).
+- [x] **[RUN - PASS]** Scenario 9: Mixed fact + question saves fact and answers with prerequisite context (`backend/tests/test_phase5_eval.py::test_scenario_09_mixed_fact_and_question`).
+- [x] **[RUN - PASS]** Scenario 10: Memory correction resolves previous struggle and creates new struggle (`backend/tests/test_phase5_eval.py::test_scenario_10_memory_correction_resolution`).
+- [x] **[RUN - PASS]** Scenario 11: Idempotent deduplication maintains single active node (`backend/tests/test_phase5_eval.py::test_scenario_11_idempotent_deduplication`).
+- [x] **[RUN - PASS]** Scenario 12: 2-hop prerequisite graph traversal and evidence step origin verification (`backend/tests/test_phase5_eval.py::test_scenario_12_two_hop_prerequisite_traversal_and_origin_labels`).
+- [x] **[RUN - PASS]** Scenario 13: Strict multi-tenant user isolation between student graphs (`backend/tests/test_phase5_eval.py::test_scenario_13_strict_user_isolation`).
+- [x] **[RUN - PASS]** Scenario 14: Error handling and warnings (`backend/tests/test_phase5_eval.py::test_scenario_14_error_handling_and_warnings`).
+- [x] **[RUN - PASS]** Scenario 15: Prompt injection hygiene in stored memory data tags (`backend/tests/test_phase5_eval.py::test_scenario_15_prompt_injection_safety`).
+- [x] **[RUN - PASS]** Scenario 16: Input validation rejections (`backend/tests/test_phase5_eval.py::test_scenario_16_input_validation_rejections`).
+- [x] **[RUN - PASS]** Scenario 17: Multi-session continuity across different session IDs (`backend/tests/test_phase5_eval.py::test_scenario_17_multisession_memory_continuity`).

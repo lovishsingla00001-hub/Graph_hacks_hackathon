@@ -32,14 +32,15 @@ Updated: 2026-10-15 (Hackathon Event Window)
 - [x] Phase 4: Graph Retrieval Service (`retrieval.py`): 2-hop prerequisite traversal (`-[:REQUIRES]->`), active memory ranking (direct > prereq > preferences, cap 8), real evidence steps from returned rows, and deterministic explanation formatting.
 - [x] Phase 4: Answer Generation Service (`answer_generation.py`): Tutoring response with strict prompt injection hygiene (`<user_stored_data>` data isolation block).
 - [x] Phase 4: Complete `POST /chat` Route (`chat.py`): Validate -> Extract -> Store/Correct in FalkorDB -> Retrieve -> Generate. Partial success guarantee (HTTP 200 with warnings if DB succeeds but LLM fails).
-- [x] Phase 4: Frontend connected to live mode (`VITE_API_MODE=live` in `frontend/.env.local`).
-- [x] Phase 4: Full automated test suite (30 passed in 1.04s): multi-session memory persistence, prerequisite traversal, evidence construction, input validation, prompt injection isolation.
+- [x] Phase 5: Comprehensive evaluation suite with 17 scenarios (`backend/tests/test_phase5_eval.py`) covering fast-path queries, pronoun & cue word handling, struggle extractions, pedagogical preferences, learning goals, mixed turns, corrections, idempotency, 2-hop traversals, user isolation, error handling, prompt injection safety, input validation, and multi-session continuity. All 17 scenarios pass in 1.1s.
+- [x] Phase 5: Empirical persistence testing verified across all 4 modes (new session, backend process restart, container restart with volume kept, docker compose down without `-v` then up).
+- [x] Phase 5: Real data directory confirmed via live `CONFIG GET dir` (`/var/lib/falkordb/data`).
+- [x] Phase 5: Full test suite passing (50 backend pytest tests in 2.1s, 7 frontend node tests in 1.9s, zero quota consumed).
 
 ## In Progress
-- [ ] Phase 5: Persistence testing under backend restarts and demo script preparation.
+- [ ] Phase 6: Frontend Evidence Inspector Polish & Verification.
 
 ## Next
-- Phase 5: Persistence & Edge Case Stress Testing.
 - Phase 6: Frontend Evidence Inspector Polish & Verification.
 - Phase 7: Optional Supabase audit logging (write-only).
 
