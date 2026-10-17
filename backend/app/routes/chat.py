@@ -67,7 +67,8 @@ def chat_turn(request: ChatRequest) -> ChatResponse:
     try:
         retrieved_memories, evidence_paths, explanation, prereq_concepts = retrieval_service.retrieve_context(
             user_id=request.user_id,
-            message=request.message
+            message=request.message,
+            history=request.history
         )
     except Exception as e:
         logger.error("Retrieval stage failed: %s", e)
@@ -79,7 +80,8 @@ def chat_turn(request: ChatRequest) -> ChatResponse:
         reply = answer_generation_service.generate_tutoring_answer(
             user_message=request.message,
             retrieved_memories=retrieved_memories,
-            prerequisite_concepts=prereq_concepts
+            prerequisite_concepts=prereq_concepts,
+            history=request.history
         )
     except Exception as e:
         logger.error("Answer generation failed: %s", e)

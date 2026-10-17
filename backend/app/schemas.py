@@ -46,10 +46,29 @@ class WarningItem(BaseModel):
     message: str
 
 # Chat
+class HistoryMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    text: str
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("text cannot be empty")
+        if len(v) > 2000:
+            raise ValueError("history message text cannot exceed 2000 characters")
+        return v
+
 class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     user_id: str
     session_id: str
     message: str
+    history: Optional[List[HistoryMessage]] = None
 
     @field_validator("user_id")
     @classmethod
@@ -75,6 +94,18 @@ class ChatRequest(BaseModel):
             raise ValueError("message cannot be empty")
         if len(v) > 4000:
             raise ValueError("message cannot exceed 4000 characters")
+        return v
+
+    @field_validator("history")
+    @classmethod
+    def validate_history(cls, v: Optional[List[HistoryMessage]]) -> Optional[List[HistoryMessage]]:
+        if v is None:
+            return None
+        if len(v) > 6:
+            raise ValueError("history cannot exceed 6 messages")
+        total_chars = sum(len(m.text) for m in v)
+        if total_chars > 10000:
+            raise ValueError("total history text cannot exceed 10000 characters")
         return v
 
 class ChatResponse(BaseModel):
