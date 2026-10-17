@@ -134,9 +134,37 @@ export function normalizeChatResponse(raw) {
 }
 
 /**
+ * Builds in-session conversation history array matching API contract:
+ * - Array of { role: "user" | "assistant", text: string }
+ * - Max the last 6 messages, oldest first
+ * - Excludes the new message (which is not yet in the array)
+ * - Excludes any "[System Message]" error replies, "Error:" replies, and "Stopped" notes
+ */
+export function buildChatHistory(messages = []) {
+  if (!Array.isArray(messages)) return [];
+
+  return messages
+    .filter(m => {
+      if (!m || typeof m !== "object") return false;
+      if (m.isError) return false;
+      if (typeof m.text !== "string" || !m.text.trim()) return false;
+      if (m.text.startsWith("[System Message]")) return false;
+      if (m.text.startsWith("Error:")) return false;
+      if (m.text.startsWith("Stopped.") || m.text.startsWith("Stopped:")) return false;
+      if (m.role !== "user" && m.role !== "assistant") return false;
+      return true;
+    })
+    .map(m => ({
+      role: m.role,
+      text: m.text.trim()
+    }))
+    .slice(-6);
+}
+
+/**
  * Mock implementation of POST /chat
  */
-async function mockChatTurn(userId, sessionId, message, signal = null) {
+async function mockChatTurn(userId, sessionId, message, signal = null, history = []) {
   if (signal?.aborted) {
     const err = new Error("The operation was aborted.");
     err.name = "AbortError";
@@ -256,12 +284,37 @@ async function mockChatTurn(userId, sessionId, message, signal = null) {
   }
 
   // Retrieval & Evidence generation
+  let activeConcept = extractedConcept;
+  if (!activeConcept && lowerMsg.includes("recursion")) {
+    activeConcept = "recursion";
+  }
+
+  // Follow-up context resolution: if current query has no concept, inspect history hints
+  if (!activeConcept && Array.isArray(history) && history.length > 0) {
+    for (let i = history.length - 1; i >= 0; i--) {
+      const h = history[i];
+      if (h.role === "user" && typeof h.text === "string") {
+        const hLower = h.text.toLowerCase();
+        for (const concept of Object.keys(mockCurriculumPrereqs)) {
+          if (hLower.includes(concept)) {
+            activeConcept = concept;
+            break;
+          }
+        }
+        if (activeConcept) break;
+        if (hLower.includes("recursion")) {
+          activeConcept = "recursion";
+          break;
+        }
+      }
+    }
+  }
+
   const retrievedMemories = userMems.filter(m => m.status === "active");
   const evidencePaths = [];
   let explanation = "";
 
-  if (extractedConcept || lowerMsg.includes("recursion")) {
-    const activeConcept = extractedConcept || "recursion";
+  if (activeConcept) {
     const prereq1 = mockCurriculumPrereqs[activeConcept] || "functions";
     const prereq2 = mockCurriculumPrereqs[prereq1] || "variables";
 
@@ -282,8 +335,15 @@ async function mockChatTurn(userId, sessionId, message, signal = null) {
     explanation = "No memories matched this query.";
   }
 
+  let replyText = "";
+  if (activeConcept && !extractedConcept && !lowerMsg.includes("recursion")) {
+    replyText = `[Mock AI Tutor] Building on our discussion of ${activeConcept}, here is another concrete example! In Python, recursion always needs a clear base condition so the call stack terminates safely.`;
+  } else {
+    replyText = `[Mock AI Tutor] I understand you are exploring ${activeConcept || "Python"}! Because recursion relies heavily on functions and variable scope, let's step through a concrete base condition example first.`;
+  }
+
   const normResp = normalizeChatResponse({
-    reply: `[Mock AI Tutor] I understand you are exploring ${extractedConcept || "Python"}! Because recursion relies heavily on functions and variable scope, let's step through a concrete base condition example first.`,
+    reply: replyText,
     saved_memories: savedMemories,
     retrieved_memories: retrievedMemories,
     evidence_paths: evidencePaths,
@@ -411,13 +471,13 @@ export async function getMemories(userId) {
 /**
  * Send a chat turn to the agent.
  */
-export async function sendChatMessage(userId, sessionId, message, signal = null) {
+export async function sendChatMessage(userId, sessionId, message, signal = null, history = []) {
   if (!userId || !sessionId || !message) {
     throw new Error("user_id, session_id, and message are required.");
   }
 
   if (API_MODE === "mock") {
-    return await mockChatTurn(userId, sessionId, message, signal);
+    return await mockChatTurn(userId, sessionId, message, signal, history);
   }
 
   if (signal?.aborted) {
@@ -438,14 +498,19 @@ export async function sendChatMessage(userId, sessionId, message, signal = null)
   }
 
   try {
+    const reqBody = {
+      user_id: userId,
+      session_id: sessionId,
+      message: message
+    };
+    if (Array.isArray(history) && history.length > 0) {
+      reqBody.history = history;
+    }
+
     const res = await fetch(`${API_BASE_URL}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: userId,
-        session_id: sessionId,
-        message: message
-      }),
+      body: JSON.stringify(reqBody),
       signal: controller.signal
     });
 

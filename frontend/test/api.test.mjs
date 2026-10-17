@@ -348,3 +348,88 @@ test('Send is disabled/hidden while pending and Stop button is displayed', () =>
   assert.equal(idleState.sendDisabled, false);
   assert.equal(idleState.hint, 'Enter to send, Shift+Enter for newline');
 });
+
+// ---------------------------------------------------------------------------
+// In-Session Conversation History Tests
+// ---------------------------------------------------------------------------
+
+test('buildChatHistory sends max 6 messages in chronological order, oldest first', async () => {
+  const { buildChatHistory } = await import('../src/api.js');
+
+  const rawMessages = [
+    { role: 'user', text: 'Msg 1' },
+    { role: 'assistant', text: 'Reply 1' },
+    { role: 'user', text: 'Msg 2' },
+    { role: 'assistant', text: 'Reply 2' },
+    { role: 'user', text: 'Msg 3' },
+    { role: 'assistant', text: 'Reply 3' },
+    { role: 'user', text: 'Msg 4' },
+    { role: 'assistant', text: 'Reply 4' }
+  ];
+
+  const history = buildChatHistory(rawMessages);
+
+  // Must take the last 6 messages, oldest first
+  assert.equal(history.length, 6);
+  assert.equal(history[0].text, 'Msg 2');
+  assert.equal(history[1].text, 'Reply 2');
+  assert.equal(history[2].text, 'Msg 3');
+  assert.equal(history[3].text, 'Reply 3');
+  assert.equal(history[4].text, 'Msg 4');
+  assert.equal(history[5].text, 'Reply 4');
+});
+
+test('buildChatHistory strictly excludes error replies and stopped notes', async () => {
+  const { buildChatHistory } = await import('../src/api.js');
+
+  const rawMessages = [
+    { role: 'user', text: 'Can you explain how recursion works?' },
+    { role: 'assistant', text: 'Recursion is when a function calls itself.' },
+    // Stopped user turn with stoppedNote
+    {
+      role: 'user',
+      text: 'What is a base case?',
+      stoppedNote: 'Stopped. The tutor may still have saved this to memory - check Saved memories.'
+    },
+    // Standalone stopped note message
+    { role: 'assistant', text: 'Stopped. The tutor may still have saved this to memory - check Saved memories.' },
+    // System message error reply
+    { role: 'assistant', text: '[System Message] Answer model unavailable: timeout' },
+    // Frontend error state message
+    { role: 'assistant', text: 'Error: Failed to complete chat turn.', isError: true },
+    { role: 'user', text: 'Give me one more example of that.' },
+    { role: 'assistant', text: 'Here is another example of recursion.' }
+  ];
+
+  const history = buildChatHistory(rawMessages);
+
+  // Excluded: the standalone stopped message, system message, and frontend error message
+  // Included: the valid turns, in order (5 items)
+  assert.equal(history.length, 5);
+  assert.deepEqual(history[0], { role: 'user', text: 'Can you explain how recursion works?' });
+  assert.deepEqual(history[1], { role: 'assistant', text: 'Recursion is when a function calls itself.' });
+  // The stopped user message text is retained, but the stoppedNote field is strictly excluded!
+  assert.deepEqual(history[2], { role: 'user', text: 'What is a base case?' });
+  assert.equal(history[2].stoppedNote, undefined);
+  assert.deepEqual(history[3], { role: 'user', text: 'Give me one more example of that.' });
+  assert.deepEqual(history[4], { role: 'assistant', text: 'Here is another example of recursion.' });
+});
+
+test('mock sendChatMessage utilizes history to resolve follow-up references like "one more example of that"', async () => {
+  const { sendChatMessage } = await import('../src/api.js');
+
+  const history = [
+    { role: 'user', text: 'Can you explain how recursion works?' },
+    { role: 'assistant', text: 'Recursion is a function calling itself.' }
+  ];
+
+  // Follow-up message has no topic name: "Give me one more example of that."
+  const res = await sendChatMessage('student_alice', 'sess_followup_test', 'Give me one more example of that.', null, history);
+
+  // Mock tutor must resolve topic to recursion from history
+  assert.ok(res.reply.includes('recursion'));
+  assert.ok(res.reply.includes('another concrete example'));
+  assert.ok(res.evidence_paths.length > 0);
+  assert.ok(res.explanation.includes('recursion'));
+});
+

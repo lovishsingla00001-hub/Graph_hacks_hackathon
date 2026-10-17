@@ -21,7 +21,8 @@ import {
   setStoredUserId,
   getStoredActiveSessionId,
   setStoredActiveSessionId,
-  resolveInitialSessionId
+  resolveInitialSessionId,
+  buildChatHistory
 } from './api';
 
 const DEMO_USERS = [
@@ -422,6 +423,9 @@ export default function App() {
     pendingTextRef.current = text;
     pendingSessionRef.current = reqSession;
 
+    // Build history from existing messages of CURRENT chat before appending new message
+    const history = buildChatHistory(messages);
+
     const userMsg = { role: 'user', text };
     setMessages(prev => [...prev, userMsg]);
     setIsSending(true);
@@ -431,7 +435,7 @@ export default function App() {
     abortControllerRef.current = controller;
 
     try {
-      const turnResponse = await sendChatMessage(reqUser, reqSession, text, controller.signal);
+      const turnResponse = await sendChatMessage(reqUser, reqSession, text, controller.signal, history);
 
       // Epoch guard: ignore if user switched mid-request, started new chat, or stopped
       if (
