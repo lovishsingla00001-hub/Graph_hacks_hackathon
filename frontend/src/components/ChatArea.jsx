@@ -2,9 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 const SUGGESTIONS = [
-  "I'm struggling with binary search trees",
-  "Can you explain recursion again?",
-  "I prefer visual analogies and step-by-step code examples"
+  "I'm learning Python, struggle with recursion, and prefer small examples.",
+  "Can you explain how recursion works?",
+  "I no longer struggle with recursion, but generators confuse me."
 ];
 
 export default function ChatArea({
