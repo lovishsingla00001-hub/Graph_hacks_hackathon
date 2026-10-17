@@ -432,27 +432,33 @@ def test_chat_history_validation_rules(client: TestClient):
     })
     assert res_bad_role.status_code == 422
 
-    # 5. Single text exceeding 2000 chars returns 422
+    # 5. Single text exceeding 30000 chars (31000) returns 422
     res_too_long_item = client.post("/chat", json={
         **base_payload,
-        "history": [{"role": "user", "text": "a" * 2001}]
+        "history": [{"role": "user", "text": "a" * 31000}]
     })
     assert res_too_long_item.status_code == 422
+    assert "history message text cannot exceed 30000 characters" in res_too_long_item.text
 
-    # 6. Total history size exceeding 10000 chars returns 422
+    # 6. History item within limit (e.g. 4000 chars truncated by frontend) is accepted (200 OK)
+    res_valid_long = client.post("/chat", json={
+        **base_payload,
+        "history": [{"role": "assistant", "text": "c" * 4000}]
+    })
+    assert res_valid_long.status_code == 200
+
+    # 7. Total history size exceeding 60000 chars returns 422
     res_total_too_long = client.post("/chat", json={
         **base_payload,
         "history": [
-            {"role": "user", "text": "b" * 2000},
-            {"role": "assistant", "text": "b" * 2000},
-            {"role": "user", "text": "b" * 2000},
-            {"role": "assistant", "text": "b" * 2000},
-            {"role": "user", "text": "b" * 2000},
-            {"role": "assistant", "text": "b" * 100}
+            {"role": "user", "text": "b" * 20000},
+            {"role": "assistant", "text": "b" * 20000},
+            {"role": "user", "text": "b" * 20000},
+            {"role": "assistant", "text": "b" * 10}
         ]
     })
     assert res_total_too_long.status_code == 422
-    assert "total history text cannot exceed 10000 characters" in res_total_too_long.text
+    assert "total history text cannot exceed 60000 characters" in res_total_too_long.text
 
     # 7. Extra fields in history message rejected (422)
     res_extra_item = client.post("/chat", json={

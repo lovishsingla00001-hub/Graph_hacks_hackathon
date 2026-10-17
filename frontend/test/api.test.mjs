@@ -433,3 +433,20 @@ test('mock sendChatMessage utilizes history to resolve follow-up references like
   assert.ok(res.explanation.includes('recursion'));
 });
 
+test('buildChatHistory truncates messages longer than 4000 characters with " [...]"', async () => {
+  const { buildChatHistory } = await import('../src/api.js');
+
+  const longAssistantMsg = 'x'.repeat(5000);
+  const rawMessages = [
+    { role: 'user', text: 'Can you explain decorators?' },
+    { role: 'assistant', text: longAssistantMsg }
+  ];
+
+  const history = buildChatHistory(rawMessages);
+  assert.equal(history.length, 2);
+  assert.equal(history[1].text.length, 4000);
+  assert.ok(history[1].text.endsWith(' [...]'));
+  assert.equal(history[1].text.slice(0, 10), 'xxxxxxxxxx');
+});
+
+

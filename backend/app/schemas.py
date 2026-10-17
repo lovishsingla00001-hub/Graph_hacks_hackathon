@@ -58,8 +58,8 @@ class HistoryMessage(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("text cannot be empty")
-        if len(v) > 2000:
-            raise ValueError("history message text cannot exceed 2000 characters")
+        if len(v) > 30000:
+            raise ValueError("history message text cannot exceed 30000 characters")
         return v
 
 class ChatRequest(BaseModel):
@@ -104,8 +104,8 @@ class ChatRequest(BaseModel):
         if len(v) > 6:
             raise ValueError("history cannot exceed 6 messages")
         total_chars = sum(len(m.text) for m in v)
-        if total_chars > 10000:
-            raise ValueError("total history text cannot exceed 10000 characters")
+        if total_chars > 60000:
+            raise ValueError("total history text cannot exceed 60000 characters")
         return v
 
 class ChatResponse(BaseModel):

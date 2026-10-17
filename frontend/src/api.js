@@ -143,6 +143,9 @@ export function normalizeChatResponse(raw) {
 export function buildChatHistory(messages = []) {
   if (!Array.isArray(messages)) return [];
 
+  const MAX_HISTORY_MSG_LEN = 4000;
+  const TRUNC_SUFFIX = " [...]";
+
   return messages
     .filter(m => {
       if (!m || typeof m !== "object") return false;
@@ -154,10 +157,16 @@ export function buildChatHistory(messages = []) {
       if (m.role !== "user" && m.role !== "assistant") return false;
       return true;
     })
-    .map(m => ({
-      role: m.role,
-      text: m.text.trim()
-    }))
+    .map(m => {
+      let text = m.text.trim();
+      if (text.length > MAX_HISTORY_MSG_LEN) {
+        text = text.slice(0, MAX_HISTORY_MSG_LEN - TRUNC_SUFFIX.length) + TRUNC_SUFFIX;
+      }
+      return {
+        role: m.role,
+        text
+      };
+    })
     .slice(-6);
 }
 

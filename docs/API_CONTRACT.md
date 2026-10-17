@@ -60,8 +60,8 @@ Default local development base URL: `http://127.0.0.1:8000`
   - `message`: string (1 - 4000 characters)
   - `history` *(optional)*: array of recent turns from CURRENT chat (max 6 items, oldest first)
     - `role`: enum (`"user"` | `"assistant"`)
-    - `text`: string (1 - 2000 characters)
-    - Total history text capped at 10,000 characters. Extra fields strictly rejected (`extra="forbid"`, returns 422).
+    - `text`: string (1 - 30,000 characters; frontend truncates prior turns to $\le 4000$ characters with `" [...]"`)
+    - Total history text capped at 60,000 characters. Extra fields strictly rejected (`extra="forbid"`, returns 422).
     - Excludes the new message, `[System Message]` error replies, and `Stopped` notes.
     - Used strictly for resolving in-session references; memory extraction runs solely on `message`. Never persisted to new tables.
 
