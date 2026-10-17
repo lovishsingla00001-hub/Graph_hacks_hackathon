@@ -22,7 +22,8 @@ import {
   getStoredActiveSessionId,
   setStoredActiveSessionId,
   resolveInitialSessionId,
-  buildChatHistory
+  buildChatHistory,
+  formatFriendlyErrorMessage
 } from './api';
 
 const DEMO_USERS = [
@@ -72,6 +73,7 @@ export default function App() {
   const abortControllerRef = useRef(null);
   const pendingTextRef = useRef('');
   const pendingSessionRef = useRef('');
+  const isSendingRef = useRef(false);
   const searchInputRef = useRef(null);
   const chatInputRef = useRef(null);
 
@@ -83,6 +85,10 @@ export default function App() {
   useEffect(() => {
     activeSessionRef.current = sessionId;
   }, [sessionId]);
+
+  useEffect(() => {
+    isSendingRef.current = isSending;
+  }, [isSending]);
 
   // Load backend and database health
   useEffect(() => {
@@ -135,6 +141,11 @@ export default function App() {
 
   // Restore session messages & Why-this-answer evidence from Supabase (or fallback)
   const loadSessionDetail = useCallback(async (targetSessionId, targetUser = userId) => {
+    // If a send is in-flight for this session, ignore to prevent wiping out state
+    if (isSendingRef.current && (targetSessionId === pendingSessionRef.current || targetSessionId === activeSessionRef.current)) {
+      return;
+    }
+
     if (!targetSessionId || targetSessionId === 'new') {
       const freshId = generateSessionId();
       setSessionId(freshId);
@@ -172,6 +183,9 @@ export default function App() {
       setStoredActiveSessionId(targetUser, targetSessionId);
     } catch {
       if (activeUserRef.current !== targetUser) return;
+      if (isSendingRef.current && (targetSessionId === pendingSessionRef.current || targetSessionId === activeSessionRef.current)) {
+        return;
+      }
 
       // Check if found in localStorage offline fallback
       const local = getLocalSessions(targetUser);
@@ -237,9 +251,11 @@ export default function App() {
       abortControllerRef.current = null;
     }
     setIsSending(false);
+    isSendingRef.current = false;
     setInputText('');
 
     const newSess = generateSessionId();
+    activeSessionRef.current = newSess;
     setSessionId(newSess);
     setMessages([]);
     setCurrentTurnData(null);
@@ -256,11 +272,32 @@ export default function App() {
     const handleHashChange = () => {
       const hash = typeof window !== 'undefined' ? window.location.hash : '';
       const parsedId = parseSessionIdFromHash(hash);
+
+      // Guard 1: If hash matches current active session or pending in-flight session, do nothing!
+      if (parsedId && (parsedId === activeSessionRef.current || parsedId === pendingSessionRef.current)) {
+        return;
+      }
+
+      // Guard 2: If a message is currently in-flight, do not let hashchange to 'new' or empty reset state
+      if (isSendingRef.current && (!parsedId || parsedId === 'new')) {
+        return;
+      }
+
       if (!parsedId || parsedId === 'new') {
-        if (messages.length > 0 || currentTurnData) {
+        if (!isSendingRef.current && (messages.length > 0 || currentTurnData)) {
           handleNewChat();
         }
       } else if (parsedId !== activeSessionRef.current) {
+        // If user explicitly navigated to a different session while sending, abort in-flight send
+        if (isSendingRef.current) {
+          turnEpochRef.current++;
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+          }
+          setIsSending(false);
+          isSendingRef.current = false;
+        }
         loadSessionDetail(parsedId, activeUserRef.current);
       }
     };
@@ -308,6 +345,7 @@ export default function App() {
       abortControllerRef.current = null;
     }
     setIsSending(false);
+    isSendingRef.current = false;
     setInputText('');
 
     setUserId(newUserId);
@@ -353,6 +391,7 @@ export default function App() {
       abortControllerRef.current = null;
     }
     setIsSending(false);
+    isSendingRef.current = false;
     setInputText('');
 
     setIsSidebarOpen(false);
@@ -373,6 +412,7 @@ export default function App() {
     }
 
     setIsSending(false);
+    isSendingRef.current = false;
 
     const pendingText = pendingTextRef.current;
     const reqSession = pendingSessionRef.current;
@@ -422,6 +462,8 @@ export default function App() {
 
     pendingTextRef.current = text;
     pendingSessionRef.current = reqSession;
+    activeSessionRef.current = reqSession;
+    isSendingRef.current = true;
 
     // Build history from existing messages of CURRENT chat before appending new message
     const history = buildChatHistory(messages);
@@ -430,6 +472,12 @@ export default function App() {
     setMessages(prev => [...prev, userMsg]);
     setIsSending(true);
     setInputText('');
+
+    // Ensure session ID and URL hash immediately reflect this chat so navigation stays in sync
+    if (typeof window !== 'undefined' && window.location.hash !== formatChatHash(reqSession)) {
+      window.location.hash = formatChatHash(reqSession);
+    }
+    setStoredActiveSessionId(reqUser, reqSession);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -456,7 +504,7 @@ export default function App() {
       setCurrentTurnData(turnResponse);
 
       // Save active session to URL hash & localStorage now that message turn exists
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && window.location.hash !== formatChatHash(reqSession)) {
         window.location.hash = formatChatHash(reqSession);
       }
       setStoredActiveSessionId(reqUser, reqSession);
@@ -491,7 +539,7 @@ export default function App() {
         ...prev,
         {
           role: 'assistant',
-          text: `Error: ${err.message || 'Failed to complete chat turn.'}`,
+          text: formatFriendlyErrorMessage(err),
           isError: true,
           failedText: text
         }
@@ -499,6 +547,7 @@ export default function App() {
     } finally {
       if (turnEpochRef.current === currentEpoch) {
         setIsSending(false);
+        isSendingRef.current = false;
         abortControllerRef.current = null;
       }
     }

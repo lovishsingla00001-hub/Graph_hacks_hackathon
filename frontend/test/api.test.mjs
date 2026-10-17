@@ -449,4 +449,211 @@ test('buildChatHistory truncates messages longer than 4000 characters with " [..
   assert.equal(history[1].text.slice(0, 10), 'xxxxxxxxxx');
 });
 
+// ---------------------------------------------------------------------------
+// Quota & Model Error Formatting Tests (Part 2a)
+// ---------------------------------------------------------------------------
+
+test('formatFriendlyErrorMessage converts 429/quota/busy errors into friendly message and scrubs keys/URLs', async () => {
+  const { formatFriendlyErrorMessage } = await import('../src/api.js');
+
+  // Case 1: Status 429 with raw JSON and URL
+  const err429 = new Error('429 RESOURCE_EXHAUSTED: Quota exceeded for metric GenerateContent. Visit https://console.cloud.google.com/apis {"code": 429, "key": "AIzaSySecretKey1234567890abcdef"}');
+  err429.status = 429;
+  const friendly1 = formatFriendlyErrorMessage(err429);
+  assert.equal(friendly1, 'The AI model is busy or out of free quota. Try again later.');
+  assert.ok(!friendly1.includes('429'));
+  assert.ok(!friendly1.includes('RESOURCE_EXHAUSTED'));
+  assert.ok(!friendly1.includes('https://'));
+  assert.ok(!friendly1.includes('AIzaSy'));
+
+  // Case 2: String with rate limit or quota keyword
+  const friendly2 = formatFriendlyErrorMessage(new Error('Rate limit exceeded: too many requests'));
+  assert.equal(friendly2, 'The AI model is busy or out of free quota. Try again later.');
+
+  // Case 3: Service unavailable (503) or model not found
+  const friendly3 = formatFriendlyErrorMessage(new Error('Model not found or temporarily unavailable'));
+  assert.equal(friendly3, 'The AI model is temporarily unavailable. Try again later.');
+
+  // Case 4: General error with JSON or URL or key
+  const errRaw = new Error('Unexpected failure: https://api.internal/v1/call key=secret_key_value {"error": {"message": "Service dropped connection"}}');
+  const friendly4 = formatFriendlyErrorMessage(errRaw);
+  assert.ok(!friendly4.includes('https://'));
+  assert.ok(!friendly4.includes('secret_key_value'));
+  assert.ok(!friendly4.includes('{'));
+});
+
+test('quota partial success returns labeled system message in reply and raw provider error only in warnings', async () => {
+  const { sendChatMessage } = await import('../src/api.js');
+
+  const res = await sendChatMessage('student_alice', 'sess_quota_mock', 'Test /simulate-quota-warning command');
+
+  // Chat bubble displays clean friendly message
+  assert.equal(res.reply, '[System Message] The AI model is busy or out of free quota. Try again later.');
+  assert.ok(!res.reply.includes('RESOURCE_EXHAUSTED'));
+  assert.ok(!res.reply.includes('https://'));
+  assert.ok(!res.reply.includes('{'));
+
+  // Raw provider error is available strictly in warnings for the "Why this answer?" drawer
+  assert.ok(res.warnings.length >= 1);
+  const llmWarn = res.warnings.find(w => w.stage === 'llm');
+  assert.ok(llmWarn);
+  assert.ok(llmWarn.message.includes('429 RESOURCE_EXHAUSTED'));
+  assert.ok(llmWarn.message.includes('[REDACTED]'));
+  assert.ok(!llmWarn.message.includes('AIza'));
+});
+
+// ---------------------------------------------------------------------------
+// Dropped Reply Bug Regression Tests (Part 2b)
+// ---------------------------------------------------------------------------
+
+test('regression: new chat -> send -> hash changes -> reply arrives -> reply must be shown without refresh', async () => {
+  const { sendChatMessage, parseSessionIdFromHash, formatChatHash } = await import('../src/api.js');
+
+  // Step 1: Initialize New Chat state
+  let activeSession = 'sess_new_test_123';
+  let isSending = false;
+  let turnEpoch = 1;
+  let messages = [];
+  let currentHash = formatChatHash('new'); // '#/chat/new'
+
+  const activeSessionRef = { current: activeSession };
+  const pendingSessionRef = { current: '' };
+  const isSendingRef = { current: false };
+
+  // HashChange handler simulating App.jsx handleHashChange
+  const onHashChange = (newHash) => {
+    currentHash = newHash;
+    const parsedId = parseSessionIdFromHash(newHash);
+
+    // Guard 1: Ignore if hash corresponds to current active session or pending in-flight session
+    if (parsedId && (parsedId === activeSessionRef.current || parsedId === pendingSessionRef.current)) {
+      return;
+    }
+
+    // Guard 2: If a send is in-flight, do not let hash change reset state
+    if (isSendingRef.current && (!parsedId || parsedId === 'new')) {
+      return;
+    }
+
+    if (!parsedId || parsedId === 'new') {
+      if (!isSendingRef.current && messages.length > 0) {
+        // Reset to new chat (only if not sending)
+        turnEpoch++;
+        activeSession = 'sess_another_new';
+        activeSessionRef.current = activeSession;
+        messages = [];
+      }
+    } else if (parsedId !== activeSessionRef.current) {
+      if (isSendingRef.current) {
+        turnEpoch++;
+        isSending = false;
+        isSendingRef.current = false;
+      }
+      activeSession = parsedId;
+      activeSessionRef.current = parsedId;
+    }
+  };
+
+  // Step 2: Send first message in new chat
+  const sendText = 'Explain recursion in Python';
+  const reqSession = activeSession;
+  const currentEpoch = ++turnEpoch;
+
+  pendingSessionRef.current = reqSession;
+  activeSessionRef.current = reqSession;
+  isSending = true;
+  isSendingRef.current = true;
+
+  // Append user message
+  messages = [...messages, { role: 'user', text: sendText }];
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].text, sendText);
+
+  // Send request in background (mock delay ~350ms)
+  const pendingPromise = sendChatMessage('student_alice', reqSession, sendText);
+
+  // Step 3: Hash changes while request is in-flight!
+  // URL hash updates to '#/chat/sess_new_test_123'
+  onHashChange(formatChatHash(reqSession));
+
+  // Verify that hash change DID NOT reset messages or change activeSession
+  assert.equal(messages.length, 1);
+  assert.equal(activeSessionRef.current, reqSession);
+  assert.equal(isSendingRef.current, true);
+
+  // Step 4: Reply arrives
+  const turnResponse = await pendingPromise;
+
+  // Epoch guard and session check in handleSendMessage
+  if (
+    turnEpoch === currentEpoch &&
+    activeSessionRef.current === reqSession
+  ) {
+    const asstMsg = {
+      role: 'assistant',
+      text: turnResponse.reply,
+      turn: turnResponse
+    };
+    messages = [...messages, asstMsg];
+  }
+  isSending = false;
+  isSendingRef.current = false;
+
+  // Step 5: Verification - Reply MUST be present in messages without requiring a refresh!
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0].role, 'user');
+  assert.equal(messages[0].text, sendText);
+  assert.equal(messages[1].role, 'assistant');
+  assert.ok(messages[1].text.length > 0);
+  assert.ok(messages[1].turn);
+});
+
+test('every send must end in exactly one visible outcome: reply, labeled system message, or error with Retry', async () => {
+  const { sendChatMessage, formatFriendlyErrorMessage } = await import('../src/api.js');
+
+  const executeSend = async (messageText) => {
+    let messages = [{ role: 'user', text: messageText }];
+    try {
+      const res = await sendChatMessage('student_alice', `sess_outcomes_${Date.now()}`, messageText);
+      // Outcome 1 or 2: Assistant bubble (reply or labeled system message)
+      messages.push({
+        role: 'assistant',
+        text: res.reply,
+        turn: res
+      });
+    } catch (err) {
+      // Outcome 3: Error bubble with Retry button
+      messages.push({
+        role: 'assistant',
+        text: formatFriendlyErrorMessage(err),
+        isError: true,
+        failedText: messageText
+      });
+    }
+    return messages;
+  };
+
+  // Outcome 1: Normal reply
+  const normalResult = await executeSend('How do functions work?');
+  assert.equal(normalResult.length, 2);
+  assert.equal(normalResult[1].role, 'assistant');
+  assert.ok(!normalResult[1].isError);
+  assert.ok(!normalResult[1].text.startsWith('[System Message]'));
+
+  // Outcome 2: Labeled system message on model outage / quota
+  const quotaResult = await executeSend('Trigger /simulate-quota-warning');
+  assert.equal(quotaResult.length, 2);
+  assert.equal(quotaResult[1].role, 'assistant');
+  assert.ok(quotaResult[1].text.startsWith('[System Message]'));
+  assert.equal(quotaResult[1].text, '[System Message] The AI model is busy or out of free quota. Try again later.');
+
+  // Outcome 3: Error with Retry on HTTP failure
+  const errorResult = await executeSend('Trigger /simulate-error');
+  assert.equal(errorResult.length, 2);
+  assert.equal(errorResult[1].role, 'assistant');
+  assert.equal(errorResult[1].isError, true);
+  assert.ok(errorResult[1].failedText);
+  assert.ok(errorResult[1].text.startsWith('Error:'));
+});
+
 

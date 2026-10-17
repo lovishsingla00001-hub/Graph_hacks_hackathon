@@ -134,6 +134,94 @@ export function normalizeChatResponse(raw) {
 }
 
 /**
+ * Formats error messages for display in the chat bubble.
+ * Enforces:
+ * - Friendly messages for quota/busy/rate limit errors
+ * - Never shows raw JSON or URLs in the chat bubble
+ * - Never exposes API keys or credentials
+ */
+export function formatFriendlyErrorMessage(err) {
+  if (!err) return "The AI model is temporarily unavailable. Try again later.";
+
+  const raw = String(err?.message || err || "").trim();
+  const lower = raw.toLowerCase();
+
+  // Quota or rate-limit error (429, RESOURCE_EXHAUSTED, quota, etc.)
+  if (
+    err?.status === 429 ||
+    err?.code === 429 ||
+    lower.includes("429") ||
+    lower.includes("resource_exhausted") ||
+    lower.includes("quota") ||
+    lower.includes("rate limit") ||
+    lower.includes("ratelimit") ||
+    lower.includes("too many requests") ||
+    lower.includes("busy")
+  ) {
+    return "The AI model is busy or out of free quota. Try again later.";
+  }
+
+  // Model unavailable, not found, or backend service error
+  if (
+    lower.includes("model not found") ||
+    lower.includes("not_found") ||
+    lower.includes("503") ||
+    lower.includes("service unavailable") ||
+    lower.includes("temporarily unavailable")
+  ) {
+    return "The AI model is temporarily unavailable. Try again later.";
+  }
+
+  // If raw string contains JSON, strip/parse it
+  let cleaned = raw;
+  if (cleaned.includes("{") && cleaned.includes("}")) {
+    try {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        if (parsed?.error?.message) {
+          cleaned = parsed.error.message;
+        } else if (parsed?.message) {
+          cleaned = parsed.message;
+        } else {
+          return "The AI model is temporarily unavailable. Try again later.";
+        }
+      }
+    } catch {
+      return "The AI model is temporarily unavailable. Try again later.";
+    }
+  }
+
+  // Check again after JSON extraction for quota
+  const cleanedLower = cleaned.toLowerCase();
+  if (
+    cleanedLower.includes("429") ||
+    cleanedLower.includes("resource_exhausted") ||
+    cleanedLower.includes("quota") ||
+    cleanedLower.includes("rate limit") ||
+    cleanedLower.includes("too many requests")
+  ) {
+    return "The AI model is busy or out of free quota. Try again later.";
+  }
+
+  // Strip URLs (never show URLs in chat bubble)
+  cleaned = cleaned.replace(/https?:\/\/[^\s]+/gi, "").trim();
+
+  // Scrub any accidental keys
+  cleaned = cleaned.replace(/AIza[0-9A-Za-z\-_]{35}/g, "[REDACTED]");
+  cleaned = cleaned.replace(/(?:key|api_key|token|secret|password)=([^\s&"\'<>]+)/gi, "key=[REDACTED]");
+  cleaned = cleaned.replace(/Bearer\s+([^\s"\'<>]+)/gi, "Bearer [REDACTED]");
+
+  // Clean trailing punctuation or empty message
+  cleaned = cleaned.replace(/^[,\s:\-]+|[,\s:\-]+$/g, "").trim();
+  if (!cleaned) {
+    return "The AI model is temporarily unavailable. Try again later.";
+  }
+
+  return cleaned.startsWith("Error:") ? cleaned : `Error: ${cleaned}`;
+}
+
+/**
  * Builds in-session conversation history array matching API contract:
  * - Array of { role: "user" | "assistant", text: string }
  * - Max the last 6 messages, oldest first
@@ -208,6 +296,29 @@ async function mockChatTurn(userId, sessionId, message, signal = null, history =
     const error = new Error("Simulated 500 error from /simulate-error command.");
     error.status = 500;
     error.code = "SIMULATED_ERROR";
+    throw error;
+  }
+
+  // Special command: simulate LLM quota partial success (returns friendly reply with raw error in warnings)
+  if (message.includes("/simulate-quota-warning")) {
+    return normalizeChatResponse({
+      reply: "[System Message] The AI model is busy or out of free quota. Try again later.",
+      saved_memories: [],
+      retrieved_memories: [],
+      evidence_paths: [],
+      warnings: [{
+        stage: "llm",
+        message: "Answer generation error: 429 RESOURCE_EXHAUSTED: Quota exceeded for metric GenerateContent. key=[REDACTED]. Visit https://console.cloud.google.com/apis {\"error\": {\"code\": 429, \"message\": \"Resource has been exhausted.\"}}"
+      }],
+      explanation: "No answer generated due to simulated LLM quota exhaustion."
+    });
+  }
+
+  // Special command: simulate HTTP 429 rejection (e.g. gateway rejection)
+  if (message.includes("/simulate-http-429")) {
+    const error = new Error('429 RESOURCE_EXHAUSTED: Quota exceeded. Visit https://console.cloud.google.com/apis {"code": 429, "key": "AIzaSyFakeSecret1234567890abcdef"}');
+    error.status = 429;
+    error.code = "RESOURCE_EXHAUSTED";
     throw error;
   }
 
