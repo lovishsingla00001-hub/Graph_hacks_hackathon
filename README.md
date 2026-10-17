@@ -176,10 +176,10 @@ Follow these exact interactive steps in the web app (`http://localhost:5173`) to
 RecallAI includes a comprehensive, 100% mocked automated test suite that runs against real FalkorDB without making external LLM calls or consuming API quota:
 
 ```bash
-# Run all 50 backend tests (pytest)
+# Run all 67 backend tests (pytest)
 pytest backend/tests -v
 
-# Run frontend contract & adapter tests (Node.js test runner)
+# Run all 22 frontend contract & adapter tests (Node.js test runner)
 cd frontend
 node --test test/api.test.mjs
 ```
@@ -189,9 +189,9 @@ node --test test/api.test.mjs
 ## ⚠️ Honest Limitations & Disclosures
 
 1. **Scripted Model Outputs in Automated Tests**:
-   - The ~15 evaluation scenarios in `backend/tests/test_phase5_eval.py` execute against real FalkorDB queries and traversals, but use scripted (mocked) model outputs for the extraction and generation stages. This guarantees deterministic, lightning-fast regression testing (50 tests in <2.5s) without consuming free-tier Gemini API quota. Real-model browser interactions should be verified interactively.
+   - The evaluation scenarios in `backend/tests/` execute against real FalkorDB queries and traversals, but use scripted (mocked) model outputs for the extraction and generation stages. This guarantees deterministic, lightning-fast regression testing (67 backend tests and 22 frontend tests in <5s) without consuming free-tier Gemini API quota. Real-model browser interactions should be verified interactively.
 2. **Prompt Injection Mitigation vs Guarantee**:
-   - RecallAI wraps all retrieved student profile memories inside structured `<user_stored_data>` XML containers and commands the tutor model to treat stored text strictly as factual data. While this defends against standard instruction-hijacking and jailbreak attempts, prompt injection defense in Large Language Models is an active defense-in-depth mitigation, not a formal mathematical guarantee against all novel jailbreak vectors.
+   - RecallAI wraps all retrieved student profile memories inside structured `<user_stored_data>` XML containers and in-session conversation history inside `<conversation_so_far>` containers, commanding the tutor model to treat both strictly as factual data/context. While this defends against standard instruction-hijacking and jailbreak attempts, prompt injection defense in Large Language Models is an active defense-in-depth mitigation, not a formal mathematical guarantee against all novel jailbreak vectors.
 3. **Scope of Persistence Verification**:
    - Persistence was empirically tested for **graceful restart cycles only**:
      - Fast process teardown & restarts of the backend.

@@ -42,12 +42,28 @@ Default local development base URL: `http://127.0.0.1:8000`
   {
     "user_id": "student_alice",
     "session_id": "sess_20261015_01",
-    "message": "I find recursion really tricky, but I know how functions work."
+    "message": "Give me one more example of that.",
+    "history": [
+      {
+        "role": "user",
+        "text": "Can you explain how recursion works?"
+      },
+      {
+        "role": "assistant",
+        "text": "Recursion is when a function calls itself with a termination condition (base case)."
+      }
+    ]
   }
   ```
   - `user_id`: string matching `^[a-z0-9_-]{3,40}$`
   - `session_id`: string matching `^[a-z0-9_-]{3,64}$`
   - `message`: string (1 - 4000 characters)
+  - `history` *(optional)*: array of recent turns from CURRENT chat (max 6 items, oldest first)
+    - `role`: enum (`"user"` | `"assistant"`)
+    - `text`: string (1 - 2000 characters)
+    - Total history text capped at 10,000 characters. Extra fields strictly rejected (`extra="forbid"`, returns 422).
+    - Excludes the new message, `[System Message]` error replies, and `Stopped` notes.
+    - Used strictly for resolving in-session references; memory extraction runs solely on `message`. Never persisted to new tables.
 
 - **Response (200 OK)**:
   ```json
