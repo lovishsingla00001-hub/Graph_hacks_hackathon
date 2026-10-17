@@ -268,6 +268,117 @@ def test_user_isolation_cannot_read_or_delete_other_user_session(client: TestCli
     res_del = client.delete(f"/sessions/{TEST_SESSION_ID}?user_id={TEST_USER_BOB}")
     assert res_del.status_code == 404
 
+def test_chat_save_turn_cannot_hijack_or_modify_other_user_session(client: TestClient, monkeypatch):
+    """
+    CRITICAL SECURITY CHECK:
+    User B sending User A's session_id:
+    (a) Does NOT modify A's session or messages.
+    (b) /chat itself still returns 200 OK with a history warning.
+    """
+    # Setup Alice's existing session state in mock storage
+    alice_session = {
+        "id": "sess_alice_secret",
+        "user_id": TEST_USER_ALICE,
+        "title": "Alice's Private Session",
+        "updated_at": "2026-10-17T09:00:00Z"
+    }
+    alice_messages = [
+        {"id": "m1", "session_id": "sess_alice_secret", "user_id": TEST_USER_ALICE, "text": "Alice secret message"}
+    ]
+
+    # Save_turn implementation that executes the real ownership check logic
+    def secure_save_turn(user_id, session_id, user_message, reply, turn_data):
+        # Simulated DB lookup by session_id:
+        if session_id == alice_session["id"]:
+            if alice_session["user_id"] != user_id:
+                raise PermissionError(
+                    f"Session '{session_id}' already belongs to a different user. Cross-user session modification is forbidden."
+                )
+            alice_session["updated_at"] = "2026-10-17T11:00:00Z"
+        else:
+            pass
+
+    monkeypatch.setattr(chat_history_service, "save_turn", secure_save_turn)
+    monkeypatch.setattr(extraction_service, "extract_memories", lambda msg: ([], []))
+    monkeypatch.setattr(answer_generation_service, "generate_tutoring_answer", lambda **kwargs: "Tutor reply for Bob.")
+
+    # Bob attempts to post to Alice's session_id
+    res = client.post("/chat", json={
+        "user_id": TEST_USER_BOB,
+        "session_id": "sess_alice_secret",
+        "message": "Bob trying to hijack Alice's session"
+    })
+
+    # (b) /chat returns 200 with normal reply and history warning
+    assert res.status_code == 200
+    data = res.json()
+    assert data["reply"] == "Tutor reply for Bob."
+    assert any(w["stage"] == "history" for w in data["warnings"])
+    hist_warn = next(w for w in data["warnings"] if w["stage"] == "history")
+    assert "Cross-user session modification is forbidden" in hist_warn["message"]
+
+    # (a) Confirm Alice's session and messages were NOT modified or overwritten
+    assert alice_session["user_id"] == TEST_USER_ALICE
+    assert alice_session["title"] == "Alice's Private Session"
+    assert alice_session["updated_at"] == "2026-10-17T09:00:00Z"
+    assert len(alice_messages) == 1
+    assert alice_messages[0]["user_id"] == TEST_USER_ALICE
+
+def test_service_save_turn_raises_permission_error_on_owner_mismatch(monkeypatch):
+    """
+    Direct unit test of chat_history_service.save_turn verifying that
+    it queries by session_id and raises PermissionError if user_id doesn't match.
+    """
+    class MockResponse:
+        def __init__(self, json_data, status_code=200):
+            self._json = json_data
+            self.status_code = status_code
+        def json(self):
+            return self._json
+        def raise_for_status(self):
+            pass
+
+    class MockHttpxClient:
+        def __init__(self, *args, **kwargs):
+            self.patch_called = False
+            self.post_called = False
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def get(self, url, params=None, headers=None):
+            # Return existing session owned by Alice
+            if params and "sess_alice_01" in params.get("id", ""):
+                return MockResponse([{"id": "sess_alice_01", "user_id": "student_alice", "title": "Alice Title"}])
+            return MockResponse([])
+        def patch(self, *args, **kwargs):
+            self.patch_called = True
+            return MockResponse([{}])
+        def post(self, *args, **kwargs):
+            self.post_called = True
+            return MockResponse([{}])
+
+    import httpx
+    from backend.app.config import settings
+
+    monkeypatch.setattr(httpx, "Client", MockHttpxClient)
+    monkeypatch.setattr(settings, "SUPABASE_URL", "https://mock.supabase.co")
+    monkeypatch.setattr(settings, "SUPABASE_SECRET_KEY", "mock_key")
+
+    from backend.app.services.chat_history import ChatHistoryService
+
+    with pytest.raises(PermissionError) as exc_info:
+        ChatHistoryService.save_turn(
+            chat_history_service,
+            user_id="student_bob",
+            session_id="sess_alice_01",
+            user_message="Hello",
+            reply="Hi",
+            turn_data={}
+        )
+
+    assert "belongs to a different user" in str(exc_info.value)
+
 def test_invalid_identifiers_rejected(client: TestClient):
     """
     Verifies that malformed user_id, session_id, or title are rejected with 422.

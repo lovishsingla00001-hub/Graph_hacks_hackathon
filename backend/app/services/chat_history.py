@@ -70,17 +70,22 @@ class ChatHistoryService:
         base_url = self._rest_url
 
         with httpx.Client(timeout=self._timeout) as client:
-            # Check if session already exists for this user
+            # Check if session exists (by id) to prevent cross-user session modification or hijacking
             check_res = client.get(
                 f"{base_url}/chat_sessions",
-                params={"id": f"eq.{session_id}", "user_id": f"eq.{user_id}", "select": "id,title"},
+                params={"id": f"eq.{session_id}", "select": "id,user_id,title"},
                 headers=self._headers
             )
             check_res.raise_for_status()
             existing_sessions = check_res.json()
 
             if existing_sessions:
-                # Update existing session timestamp
+                existing_session = existing_sessions[0]
+                if existing_session.get("user_id") != user_id:
+                    raise PermissionError(
+                        f"Session '{session_id}' already belongs to a different user. Cross-user session modification is forbidden."
+                    )
+                # Update existing session timestamp without altering user_id or title
                 patch_res = client.patch(
                     f"{base_url}/chat_sessions",
                     params={"id": f"eq.{session_id}", "user_id": f"eq.{user_id}"},
