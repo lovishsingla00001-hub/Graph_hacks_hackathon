@@ -175,3 +175,82 @@ test('localStorage fallback functions handle missing window gracefully without c
   assert.doesNotThrow(() => saveLocalSession('student_test', { id: 's_fallback', title: 'Local fallback' }));
   assert.doesNotThrow(() => deleteLocalSession('student_test', 's_fallback'));
 });
+
+test('URL hash parsing and formatting handles sessions and new chats correctly', async () => {
+  const { parseSessionIdFromHash, formatChatHash } = await import('../src/api.js');
+
+  assert.equal(parseSessionIdFromHash('#/chat/sess_123'), 'sess_123');
+  assert.equal(parseSessionIdFromHash('#/chat/new'), 'new');
+  assert.equal(parseSessionIdFromHash('#/'), null);
+  assert.equal(parseSessionIdFromHash(''), null);
+  assert.equal(parseSessionIdFromHash(null), null);
+
+  assert.equal(formatChatHash('sess_123'), '#/chat/sess_123');
+  assert.equal(formatChatHash('new'), '#/chat/new');
+  assert.equal(formatChatHash(null), '#/chat/new');
+});
+
+test('resolveInitialSessionId prioritizes URL hash over localStorage', async () => {
+  const { resolveInitialSessionId } = await import('../src/api.js');
+
+  const mockStorage = {
+    data: {
+      'recallai_active_session_student_alice': 'sess_from_storage',
+      'recallai_active_session_id': 'sess_from_storage'
+    },
+    getItem(key) {
+      return this.data[key] || null;
+    }
+  };
+
+  // 1. When hash contains a session, it takes priority over storage
+  const fromHash = resolveInitialSessionId({
+    hash: '#/chat/sess_from_hash',
+    userId: 'student_alice',
+    storage: mockStorage
+  });
+  assert.equal(fromHash, 'sess_from_hash');
+
+  // 2. When hash is empty, falls back to localStorage
+  const fromStorage = resolveInitialSessionId({
+    hash: '',
+    userId: 'student_alice',
+    storage: mockStorage
+  });
+  assert.equal(fromStorage, 'sess_from_storage');
+
+  // 3. When hash is #/chat/new, returns 'new'
+  const newChat = resolveInitialSessionId({
+    hash: '#/chat/new',
+    userId: 'student_alice',
+    storage: mockStorage
+  });
+  assert.equal(newChat, 'new');
+});
+
+test('session restore logic recovers messages and turn data, or 404 falls back cleanly', async () => {
+  const { getSession } = await import('../src/api.js');
+
+  // Alice successfully restores her session
+  const aliceSession = await getSession('sess_alice_today', 'student_alice');
+  assert.equal(aliceSession.id, 'sess_alice_today');
+  assert.equal(aliceSession.messages.length, 2);
+  const lastAsst = [...aliceSession.messages].reverse().find(m => m.role === 'assistant' && m.turn);
+  assert.ok(lastAsst);
+  assert.ok(lastAsst.turn.evidence_paths);
+
+  // Cross-user session access or invalid session throws 404, which triggers fallback to empty state
+  await assert.rejects(
+    async () => {
+      await getSession('sess_alice_today', 'student_bob');
+    },
+    (err) => err.status === 404
+  );
+
+  await assert.rejects(
+    async () => {
+      await getSession('sess_nonexistent_xyz', 'student_alice');
+    },
+    (err) => err.status === 404
+  );
+});

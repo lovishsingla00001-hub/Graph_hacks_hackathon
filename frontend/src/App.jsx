@@ -14,7 +14,14 @@ import {
   deleteSession,
   getLocalSessions,
   saveLocalSession,
-  deleteLocalSession
+  deleteLocalSession,
+  parseSessionIdFromHash,
+  formatChatHash,
+  getStoredUserId,
+  setStoredUserId,
+  getStoredActiveSessionId,
+  setStoredActiveSessionId,
+  resolveInitialSessionId
 } from './api';
 
 const DEMO_USERS = [
@@ -27,14 +34,8 @@ function generateSessionId() {
 }
 
 export default function App() {
-  // Selected demo student identity
-  const [userId, setUserId] = useState(() => {
-    try {
-      return localStorage.getItem('recallai_demo_user_id') || 'student_alice';
-    } catch {
-      return 'student_alice';
-    }
-  });
+  // Selected demo student identity (safely read from localStorage)
+  const [userId, setUserId] = useState(() => getStoredUserId());
 
   // Active session and conversation messages
   const [sessionId, setSessionId] = useState(() => generateSessionId());
@@ -70,11 +71,7 @@ export default function App() {
 
   useEffect(() => {
     activeUserRef.current = userId;
-    try {
-      localStorage.setItem('recallai_demo_user_id', userId);
-    } catch {
-      // Ignore
-    }
+    setStoredUserId(userId);
   }, [userId]);
 
   useEffect(() => {
@@ -130,11 +127,133 @@ export default function App() {
       });
   }, [userId]);
 
-  // Initial load and user identity changes
+  // Restore session messages & Why-this-answer evidence from Supabase (or fallback)
+  const loadSessionDetail = useCallback(async (targetSessionId, targetUser = userId) => {
+    if (!targetSessionId || targetSessionId === 'new') {
+      const freshId = generateSessionId();
+      setSessionId(freshId);
+      setMessages([]);
+      setCurrentTurnData(null);
+      if (typeof window !== 'undefined') {
+        window.location.hash = formatChatHash('new');
+      }
+      setStoredActiveSessionId(targetUser, null);
+      return;
+    }
+
+    try {
+      const detail = await getSession(targetSessionId, targetUser);
+      // Guard against stale user switch
+      if (activeUserRef.current !== targetUser) return;
+
+      const historyMsgs = (detail.messages || []).map(m => ({
+        role: m.role,
+        text: m.text,
+        turn: m.turn,
+        created_at: m.created_at
+      }));
+
+      setSessionId(targetSessionId);
+      setMessages(historyMsgs);
+
+      // Restore Why-this-answer drawer data from last assistant turn
+      const lastAsst = [...historyMsgs].reverse().find(m => m.role === 'assistant' && m.turn);
+      setCurrentTurnData(lastAsst ? lastAsst.turn : null);
+
+      if (typeof window !== 'undefined') {
+        window.location.hash = formatChatHash(targetSessionId);
+      }
+      setStoredActiveSessionId(targetUser, targetSessionId);
+    } catch {
+      if (activeUserRef.current !== targetUser) return;
+
+      // Check if found in localStorage offline fallback
+      const local = getLocalSessions(targetUser);
+      const match = local.find(s => s.id === targetSessionId);
+      if (match) {
+        setSessionId(targetSessionId);
+        const msgs = match.messages || [];
+        setMessages(msgs);
+        const lastAsst = [...msgs].reverse().find(m => m.role === 'assistant' && m.turn);
+        setCurrentTurnData(lastAsst ? lastAsst.turn : null);
+        if (typeof window !== 'undefined') {
+          window.location.hash = formatChatHash(targetSessionId);
+        }
+        setStoredActiveSessionId(targetUser, targetSessionId);
+        return;
+      }
+
+      // 404 or failed: fall back to empty state without an error popup
+      const freshId = generateSessionId();
+      setSessionId(freshId);
+      setMessages([]);
+      setCurrentTurnData(null);
+      if (typeof window !== 'undefined') {
+        window.location.hash = formatChatHash('new');
+      }
+      setStoredActiveSessionId(targetUser, null);
+    }
+  }, [userId]);
+
+  // Initial load: restore last chat (Hash first, then localStorage)
   useEffect(() => {
-    loadMemories(userId);
-    loadSessions(userId);
-  }, [userId, loadMemories, loadSessions]);
+    const initialUser = getStoredUserId();
+    activeUserRef.current = initialUser;
+
+    loadMemories(initialUser);
+    loadSessions(initialUser);
+
+    const hash = typeof window !== 'undefined' ? window.location.hash : '';
+    const targetSessionId = resolveInitialSessionId({
+      hash,
+      userId: initialUser
+    });
+
+    if (targetSessionId && targetSessionId !== 'new') {
+      loadSessionDetail(targetSessionId, initialUser);
+    } else {
+      const freshId = generateSessionId();
+      setSessionId(freshId);
+      setMessages([]);
+      setCurrentTurnData(null);
+      if (typeof window !== 'undefined') {
+        window.location.hash = formatChatHash('new');
+      }
+      setStoredActiveSessionId(initialUser, null);
+    }
+  }, [loadMemories, loadSessions, loadSessionDetail]);
+
+  // Start a New Chat
+  const handleNewChat = useCallback(() => {
+    const newSess = generateSessionId();
+    setSessionId(newSess);
+    setMessages([]);
+    setCurrentTurnData(null);
+    setIsSidebarOpen(false);
+    if (typeof window !== 'undefined') {
+      window.location.hash = formatChatHash('new');
+    }
+    setStoredActiveSessionId(userId, null);
+    setTimeout(() => chatInputRef.current?.focus(), 50);
+  }, [userId]);
+
+  // Listen for browser navigation hash changes
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = typeof window !== 'undefined' ? window.location.hash : '';
+      const parsedId = parseSessionIdFromHash(hash);
+      if (!parsedId || parsedId === 'new') {
+        if (messages.length > 0 || currentTurnData) {
+          handleNewChat();
+        }
+      } else if (parsedId !== activeSessionRef.current) {
+        loadSessionDetail(parsedId, activeUserRef.current);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [handleNewChat, loadSessionDetail, messages.length, currentTurnData]);
 
   // Global Keyboard Shortcuts (Esc closes modals/drawers; Ctrl+K / Cmd+K focuses search)
   useEffect(() => {
@@ -165,21 +284,33 @@ export default function App() {
   const handleUserChange = (newUserId) => {
     if (newUserId === userId) return;
     setUserId(newUserId);
-    const newSess = generateSessionId();
-    setSessionId(newSess);
-    setMessages([]);
-    setCurrentTurnData(null);
+    activeUserRef.current = newUserId;
+    setStoredUserId(newUserId);
     setIsSidebarOpen(false);
-  };
 
-  // Start a New Chat
-  const handleNewChat = () => {
-    const newSess = generateSessionId();
-    setSessionId(newSess);
-    setMessages([]);
-    setCurrentTurnData(null);
-    setIsSidebarOpen(false);
-    setTimeout(() => chatInputRef.current?.focus(), 50);
+    // 1. Clear the hash
+    if (typeof window !== 'undefined') {
+      window.location.hash = '';
+    }
+
+    // 2. Load memories and sessions for new user
+    loadMemories(newUserId);
+    loadSessions(newUserId);
+
+    // 3. Show that user's own last chat or the empty state; never load one user's session under another user
+    const lastSessionForUser = getStoredActiveSessionId(newUserId);
+    if (lastSessionForUser && lastSessionForUser !== 'new') {
+      loadSessionDetail(lastSessionForUser, newUserId);
+    } else {
+      const newSess = generateSessionId();
+      setSessionId(newSess);
+      setMessages([]);
+      setCurrentTurnData(null);
+      if (typeof window !== 'undefined') {
+        window.location.hash = formatChatHash('new');
+      }
+      setStoredActiveSessionId(newUserId, null);
+    }
   };
 
   // Select a Chat from Sidebar
@@ -189,35 +320,8 @@ export default function App() {
       return;
     }
 
-    setSessionId(targetSessionId);
     setIsSidebarOpen(false);
-
-    getSession(targetSessionId, userId)
-      .then(detail => {
-        if (activeSessionRef.current === targetSessionId && activeUserRef.current === userId) {
-          const historyMsgs = (detail.messages || []).map(m => ({
-            role: m.role,
-            text: m.text,
-            turn: m.turn,
-            created_at: m.created_at
-          }));
-          setMessages(historyMsgs);
-
-          // Find latest assistant turn evidence
-          const lastAsst = [...historyMsgs].reverse().find(m => m.role === 'assistant' && m.turn);
-          setCurrentTurnData(lastAsst ? lastAsst.turn : null);
-        }
-      })
-      .catch(() => {
-        // Fallback to local session if remote load fails
-        const local = getLocalSessions(userId);
-        const match = local.find(s => s.id === targetSessionId);
-        if (match && activeSessionRef.current === targetSessionId) {
-          setMessages(match.messages || []);
-          const lastAsst = [...(match.messages || [])].reverse().find(m => m.role === 'assistant' && m.turn);
-          setCurrentTurnData(lastAsst ? lastAsst.turn : null);
-        }
-      });
+    loadSessionDetail(targetSessionId, userId);
   };
 
   // Send Message
@@ -245,6 +349,12 @@ export default function App() {
 
       setMessages(prev => [...prev, asstMsg]);
       setCurrentTurnData(turnResponse);
+
+      // Save active session to URL hash & localStorage now that message turn exists
+      if (typeof window !== 'undefined') {
+        window.location.hash = formatChatHash(reqSession);
+      }
+      setStoredActiveSessionId(reqUser, reqSession);
 
       // Refresh graph memories in FalkorDB
       loadMemories(reqUser);

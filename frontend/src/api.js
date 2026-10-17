@@ -666,3 +666,84 @@ export function deleteLocalSession(userId, sessionId) {
     // Graceful fallback
   }
 }
+
+/**
+ * URL Hash & Session Persistence Helpers
+ */
+export function parseSessionIdFromHash(hash = "") {
+  if (typeof hash !== "string") return null;
+  const trimmed = hash.trim();
+  const match = trimmed.match(/^#\/chat\/([a-zA-Z0-9_\-]+)$/);
+  if (!match) return null;
+  const candidate = match[1];
+  if (candidate === "new") return "new";
+  return candidate;
+}
+
+export function formatChatHash(sessionId) {
+  if (!sessionId || sessionId === "new") {
+    return "#/chat/new";
+  }
+  return `#/chat/${encodeURIComponent(sessionId)}`;
+}
+
+export function getStoredUserId() {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return "student_alice";
+    return window.localStorage.getItem("recallai_demo_user_id") || "student_alice";
+  } catch {
+    return "student_alice";
+  }
+}
+
+export function setStoredUserId(userId) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    if (userId) {
+      window.localStorage.setItem("recallai_demo_user_id", userId);
+    }
+  } catch {}
+}
+
+export function getStoredActiveSessionId(userId) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    return window.localStorage.getItem(`recallai_active_session_${userId}`) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredActiveSessionId(userId, sessionId) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    if (sessionId && sessionId !== "new") {
+      window.localStorage.setItem(`recallai_active_session_${userId}`, sessionId);
+      window.localStorage.setItem("recallai_active_session_id", sessionId);
+    } else {
+      window.localStorage.removeItem(`recallai_active_session_${userId}`);
+      window.localStorage.removeItem("recallai_active_session_id");
+    }
+  } catch {}
+}
+
+export function resolveInitialSessionId({ hash = "", userId = "student_alice", storage = null } = {}) {
+  // 1. Check URL hash first
+  const fromHash = parseSessionIdFromHash(hash);
+  if (fromHash) {
+    return fromHash;
+  }
+
+  // 2. Fall back to localStorage
+  try {
+    const store = storage || (typeof window !== "undefined" ? window.localStorage : null);
+    if (store) {
+      const fromStore = store.getItem(`recallai_active_session_${userId}`) || store.getItem("recallai_active_session_id");
+      if (fromStore && fromStore !== "new") {
+        return fromStore;
+      }
+    }
+  } catch {}
+
+  return null;
+}
