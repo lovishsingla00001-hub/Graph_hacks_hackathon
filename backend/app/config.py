@@ -48,4 +48,8 @@ class Settings(BaseSettings):
             return bool(self.GROQ_API_KEY and self.GROQ_API_KEY.strip())
         return False
 
+    @property
+    def is_supabase_configured(self) -> bool:
+        return bool(self.SUPABASE_URL and self.SUPABASE_URL.strip() and self.SUPABASE_SECRET_KEY and self.SUPABASE_SECRET_KEY.strip())
+
 settings = Settings()

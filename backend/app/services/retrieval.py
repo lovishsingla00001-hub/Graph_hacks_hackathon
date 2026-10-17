@@ -57,17 +57,30 @@ class RetrievalService:
     def retrieve_context(
         self,
         user_id: str,
-        message: str
+        message: str,
+        history: Optional[List[Any]] = None
     ) -> Tuple[List[MemoryItem], List[EvidencePath], str, List[str]]:
         """
         Retrieves relevant active memories and constructs real evidence paths
         via 2-hop prerequisite traversal in FalkorDB.
+        Uses concepts from recent history as retrieval hints for short follow-ups.
         Returns (ranked_memories, evidence_paths, explanation, prerequisite_concepts).
         """
         graph = self._db.get_user_graph(user_id)
         seed_curriculum_if_needed(graph)
 
         matched_concept_ids = identify_concepts_in_text(message)
+
+        # For follow-ups with no explicit concept, check last user message in history
+        if not matched_concept_ids and history:
+            for h in reversed(history):
+                role = getattr(h, "role", None) or (h.get("role") if isinstance(h, dict) else None)
+                text = getattr(h, "text", None) or (h.get("text") if isinstance(h, dict) else None)
+                if role == "user" and text:
+                    hints = identify_concepts_in_text(str(text))
+                    if hints:
+                        matched_concept_ids = hints
+                        break
 
         # 1. If no educational concepts matched, check if active preferences exist
         if not matched_concept_ids:

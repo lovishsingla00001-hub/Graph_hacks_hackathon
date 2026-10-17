@@ -111,3 +111,34 @@ This script walks through a complete, verifiable demonstration of RecallAI for h
 - **Verification Status**:
   - Automated Mock Test: **PASS** (`backend/tests/test_phase5_eval.py::test_scenario_13`)
   - Live Browser Gemini Run: **`[PENDING real run]`**
+
+---
+
+## Step 7: Chat History Persistence, Renaming & Search (Supabase via Backend)
+- **Action**:
+  1. In the left sidebar, observe previous chats grouped under **"Today"**.
+  2. Click on a previous session in the list:
+     - The complete message thread is restored with formatted Markdown.
+     - Click **"Why this answer?"** on an assistant reply: the right drawer opens displaying the exact multi-hop graph traversal and memories retrieved.
+  3. Hover over the session in the sidebar and click the rename icon (`✎`):
+     - In the modal, rename the session to `"Python Recursion & Call Stacks"`.
+     - Click **Save**: the new title immediately updates in the sidebar and persists to Supabase.
+  4. Press `Ctrl+K` (or `Cmd+K` on macOS) to focus the search bar in the sidebar:
+     - Type `"Recursion"`: observe real-time client-side filtering.
+  5. Delete a session:
+     - Hover over a session and click delete (`✕`).
+     - Confirm deletion in the confirmation modal: the session is permanently removed from Supabase, while personal graph memories remain preserved in FalkorDB.
+- **Verification Status**:
+  - Automated Tests: **PASS** (`backend/tests/test_chat_history.py`, `frontend/test/api.test.mjs`)
+  - Live Verification: **PASS** (`scratch/live_supabase_test.py` against live backend and Supabase).
+
+---
+
+## Step 8: Offline LocalStorage Fallback Verification
+- **Action**: Simulate Supabase being temporarily unreachable (or toggle mock mode).
+- **Expected UI Output**:
+  - The header displays **"History: LocalStorage"** with an amber pill.
+  - A subtle warning badge appears in the sidebar: **"Offline storage active. Sessions saved locally in browser."**
+  - All chat sessions, turns, and messages continue to function smoothly without crashing.
+- **Verification Status**:
+  - Automated Unit Tests: **PASS** (`frontend/test/api.test.mjs` test: *localStorage fallback functions handle missing window gracefully without crashing*).
