@@ -10,13 +10,19 @@ const SUGGESTIONS = [
 export default function ChatArea({
   messages = [],
   isLoading = false,
+  inputText: externalInputText,
+  onInputChange,
   onSendMessage,
+  onStop,
   onRetry,
   onOpenEvidence,
   demoUserLabel = 'Student',
   inputRef
 }) {
-  const [inputText, setInputText] = useState('');
+  const [localInput, setLocalInput] = useState('');
+  const inputText = externalInputText !== undefined ? externalInputText : localInput;
+  const setInputText = onInputChange || setLocalInput;
+
   const [copiedIndex, setCopiedIndex] = useState(null);
   const threadEndRef = useRef(null);
   const localTextareaRef = useRef(null);
@@ -44,6 +50,14 @@ export default function ChatArea({
   };
 
   const handleKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      if (isLoading && onStop) {
+        e.preventDefault();
+        e.stopPropagation();
+        onStop();
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -74,7 +88,6 @@ export default function ChatArea({
 
   // Helper to extract first name or clean label
   const cleanName = demoUserLabel.split(' ')[0] || 'there';
-
   const isThreadEmpty = messages.length === 0;
 
   return (
@@ -95,23 +108,35 @@ export default function ChatArea({
                 value={inputText}
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
-                disabled={isLoading}
                 rows={2}
                 aria-label="Message composer"
               />
               <div className="composer-footer">
                 <span className="composer-hint">
-                  Enter to send, Shift+Enter for newline
+                  {isLoading ? 'Esc to stop' : 'Enter to send, Shift+Enter for newline'}
                 </span>
-                <button
-                  className="btn-send"
-                  onClick={() => handleSend()}
-                  disabled={!inputText.trim() || isLoading}
-                  aria-label="Send message"
-                  title="Send message"
-                >
-                  ↑
-                </button>
+                {isLoading ? (
+                  <button
+                    className="btn-stop"
+                    onClick={onStop}
+                    aria-label="Stop generation"
+                    title="Stop response (Esc)"
+                    type="button"
+                  >
+                    <span className="btn-stop-icon">■</span>
+                    <span className="btn-stop-label">Stop</span>
+                  </button>
+                ) : (
+                  <button
+                    className="btn-send"
+                    onClick={() => handleSend()}
+                    disabled={!inputText.trim() || isLoading}
+                    aria-label="Send message"
+                    title="Send message"
+                  >
+                    ↑
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -124,6 +149,7 @@ export default function ChatArea({
                 className="suggestion-chip"
                 onClick={() => handleSend(suggestion)}
                 title="Send this prompt"
+                disabled={isLoading}
               >
                 {suggestion}
               </button>
@@ -154,6 +180,13 @@ export default function ChatArea({
                         </div>
                       )}
                     </div>
+
+                    {/* Muted note under user message if stopped */}
+                    {isUser && msg.stoppedNote && (
+                      <div className="stopped-note">
+                        {msg.stoppedNote}
+                      </div>
+                    )}
 
                     {/* Assistant Footer with memory badges, copy button, and evidence trigger */}
                     {!isUser && !msg.isError && (
@@ -244,23 +277,35 @@ export default function ChatArea({
                 value={inputText}
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
-                disabled={isLoading}
                 rows={1}
                 aria-label="Reply composer"
               />
               <div className="composer-footer">
                 <span className="composer-hint">
-                  Enter to send, Shift+Enter for newline
+                  {isLoading ? 'Esc to stop' : 'Enter to send, Shift+Enter for newline'}
                 </span>
-                <button
-                  className="btn-send"
-                  onClick={() => handleSend()}
-                  disabled={!inputText.trim() || isLoading}
-                  aria-label="Send message"
-                  title="Send message"
-                >
-                  ↑
-                </button>
+                {isLoading ? (
+                  <button
+                    className="btn-stop"
+                    onClick={onStop}
+                    aria-label="Stop generation"
+                    title="Stop response (Esc)"
+                    type="button"
+                  >
+                    <span className="btn-stop-icon">■</span>
+                    <span className="btn-stop-label">Stop</span>
+                  </button>
+                ) : (
+                  <button
+                    className="btn-send"
+                    onClick={() => handleSend()}
+                    disabled={!inputText.trim() || isLoading}
+                    aria-label="Send message"
+                    title="Send message"
+                  >
+                    ↑
+                  </button>
+                )}
               </div>
             </div>
           </div>

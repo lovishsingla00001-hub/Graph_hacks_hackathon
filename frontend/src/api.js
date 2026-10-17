@@ -136,9 +136,35 @@ export function normalizeChatResponse(raw) {
 /**
  * Mock implementation of POST /chat
  */
-async function mockChatTurn(userId, sessionId, message) {
-  // Artificial slight latency to test loading UI states
-  await new Promise(res => setTimeout(res, 350));
+async function mockChatTurn(userId, sessionId, message, signal = null) {
+  if (signal?.aborted) {
+    const err = new Error("The operation was aborted.");
+    err.name = "AbortError";
+    throw err;
+  }
+
+  // Artificial slight latency to test loading UI states, cancelable via AbortSignal
+  if (signal) {
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(resolve, 350);
+      const onAbort = () => {
+        clearTimeout(timeout);
+        signal.removeEventListener("abort", onAbort);
+        const err = new Error("The operation was aborted.");
+        err.name = "AbortError";
+        reject(err);
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+  } else {
+    await new Promise(res => setTimeout(res, 350));
+  }
+
+  if (signal?.aborted) {
+    const err = new Error("The operation was aborted.");
+    err.name = "AbortError";
+    throw err;
+  }
 
   // Special command: simulate general backend failure
   if (message.includes("/simulate-error")) {
@@ -385,17 +411,31 @@ export async function getMemories(userId) {
 /**
  * Send a chat turn to the agent.
  */
-export async function sendChatMessage(userId, sessionId, message) {
+export async function sendChatMessage(userId, sessionId, message, signal = null) {
   if (!userId || !sessionId || !message) {
     throw new Error("user_id, session_id, and message are required.");
   }
 
   if (API_MODE === "mock") {
-    return await mockChatTurn(userId, sessionId, message);
+    return await mockChatTurn(userId, sessionId, message, signal);
+  }
+
+  if (signal?.aborted) {
+    const err = new Error("The operation was aborted.");
+    err.name = "AbortError";
+    throw err;
   }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  const onExternalAbort = () => {
+    controller.abort(signal?.reason);
+  };
+
+  if (signal) {
+    signal.addEventListener("abort", onExternalAbort, { once: true });
+  }
 
   try {
     const res = await fetch(`${API_BASE_URL}/chat`, {
@@ -421,10 +461,22 @@ export async function sendChatMessage(userId, sessionId, message) {
     }
 
     return normalizeChatResponse(data);
+  } catch (err) {
+    if (signal?.aborted || err.name === "AbortError") {
+      const abortErr = new Error("The operation was aborted.");
+      abortErr.name = "AbortError";
+      throw abortErr;
+    }
+    throw err;
   } finally {
     clearTimeout(timeoutId);
+    if (signal) {
+      signal.removeEventListener("abort", onExternalAbort);
+    }
   }
 }
+
+export const sendChat = sendChatMessage;
 
 /**
  * List chat sessions for a user (newest first, max 50).

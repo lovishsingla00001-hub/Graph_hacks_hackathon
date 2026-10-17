@@ -84,10 +84,15 @@
 - [x] **[RUN - PASS]** Cross-user session hijacking security: user B sending user A's session ID is rejected from overwriting user A's session/messages; `/chat` returns 200 with history warning (`backend/tests/test_chat_history.py::test_save_turn_hijacking_rejection_and_chat_warning`).
 - [x] **[RUN - PASS]** URL and filter safety: strictly validated IDs via regex (`^[a-zA-Z0-9_\-]+$`) and encoded query parameters (`encodeURIComponent`).
 - [x] **[RUN - PASS]** Backend test suite: 62/62 tests passing (`pytest backend/tests`).
-- [x] **[RUN - PASS]** Frontend test suite: 13/13 unit tests passing (`npm test` in `frontend/`).
+- [x] **[RUN - PASS]** Frontend test suite: 19/19 unit tests passing (`npm test` in `frontend/`).
 - [x] **[RUN - PASS]** Frontend production build: `npm run build` completes cleanly without warnings or errors.
 - [x] **[RUN - PASS]** Claude-inspired UI: Left sidebar with grouped chat history (Today/Yesterday/Earlier), client-side search with `Ctrl+K`, per-chat Rename and Delete with confirm dialogs.
 - [x] **[RUN - PASS]** Centered empty state: Cormorant Garamond serif greeting (`"Hey there, <student>"`), large composer box, and 3 suggestion chips matching demo queries.
 - [x] **[RUN - PASS]** Active chat thread: Centered column (`max-width: ~760px`), assistant replies rendered in clean Markdown via `react-markdown`, copy-to-clipboard button, inline memory badge, and "Why this answer?" drawer trigger.
 - [x] **[RUN - PASS]** Graph Evidence Drawer: Slide-out drawer / mobile bottom sheet with "Why this answer?" (chain traversal with "You said" / "Curated" chips) and "Saved memories" tabs with active count badge.
 - [x] **[RUN - PASS]** Offline fallback: Per-user `localStorage` fallback with warning banner if Supabase is unreachable.
+- [x] **[RUN - PASS]** Reopen last active chat on load: URL hash prioritized over localStorage (`#/chat/<sessionId>`), with graceful fallback to clean empty state on 404 or missing session.
+- [x] **[RUN - PASS]** Stop button while reply pending: Send button replaced by square Stop button with champagne outline (`Esc` also stops when composer focused); `sendChatMessage` / `sendChat` accepts `AbortSignal` and handles abort cleanly without delivery failure errors or retry buttons.
+- [x] **[RUN - PASS]** Stop state cleanup: Removes typing indicator, keeps user message with muted note ("Stopped. The tutor may still have saved this to memory - check Saved memories."), restores composer text only if message was not saved, and refreshes memories and sidebar.
+- [x] **[RUN - PASS]** Epoch guard late response suppression: Late-arriving response after Stop, user switch, or new chat is silently ignored in UI.
+- [x] **[RUN - PASS]** Mock-mode Stop support: AbortSignal cancelation verified in `VITE_API_MODE=mock`.

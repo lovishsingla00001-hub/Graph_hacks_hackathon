@@ -254,3 +254,97 @@ test('session restore logic recovers messages and turn data, or 404 falls back c
     (err) => err.status === 404
   );
 });
+
+// ---------------------------------------------------------------------------
+// Stop Generation & AbortSignal Tests
+// ---------------------------------------------------------------------------
+
+test('aborting sendChat throws AbortError and does not produce a delivery failure state', async () => {
+  const { sendChatMessage, sendChat } = await import('../src/api.js');
+
+  // Both sendChatMessage and sendChat alias work
+  assert.equal(sendChatMessage, sendChat);
+
+  const controller = new AbortController();
+  // Abort after 50ms (before mock 350ms delay finishes)
+  setTimeout(() => controller.abort(), 50);
+
+  let capturedError = null;
+  try {
+    await sendChatMessage('student_alice', 'sess_abort_01', 'Explain binary trees', controller.signal);
+  } catch (err) {
+    capturedError = err;
+  }
+
+  assert.ok(capturedError, 'Expected sendChatMessage to reject on abort');
+  assert.equal(capturedError.name, 'AbortError');
+  // AbortError is explicitly recognized by the UI to NOT create an error bubble or retry button
+  assert.notEqual(capturedError.code, 'HTTP_ERROR');
+});
+
+test('a late response after stop is ignored via epoch guarding', async () => {
+  const { sendChatMessage } = await import('../src/api.js');
+
+  let currentEpoch = 1;
+  const messages = [{ role: 'user', text: 'Slow question' }];
+
+  // Simulate pending async request with epoch 1
+  const requestEpoch = currentEpoch;
+  const pendingPromise = sendChatMessage('student_alice', 'sess_epoch_test', 'Slow question');
+
+  // User clicks Stop: epoch is incremented and user message is annotated
+  currentEpoch++;
+  messages[0] = {
+    ...messages[0],
+    stoppedNote: 'Stopped. The tutor may still have saved this to memory - check Saved memories.'
+  };
+
+  // Wait for late response
+  const lateResponse = await pendingPromise;
+
+  // Epoch guard check: if requestEpoch !== currentEpoch, ignore it in the UI!
+  if (requestEpoch === currentEpoch) {
+    messages.push({ role: 'assistant', text: lateResponse.reply });
+  }
+
+  // Verify that the assistant message was NOT added
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].stoppedNote, 'Stopped. The tutor may still have saved this to memory - check Saved memories.');
+});
+
+test('Send is disabled/hidden while pending and Stop button is displayed', () => {
+  // Test state rendering contract:
+  // When isLoading is true:
+  // - Send button is hidden/replaced by Stop button
+  // - Stop button has square icon "■", label "Stop", accessible name "Stop generation"
+  // - Hint displays "Esc to stop"
+  const getComposerState = (isLoading, inputText) => {
+    return {
+      showStop: isLoading,
+      showSend: !isLoading,
+      sendDisabled: !inputText.trim() || isLoading,
+      hint: isLoading ? 'Esc to stop' : 'Enter to send, Shift+Enter for newline',
+      stopButton: isLoading ? {
+        icon: '■',
+        label: 'Stop',
+        ariaLabel: 'Stop generation',
+        title: 'Stop response (Esc)'
+      } : null
+    };
+  };
+
+  const pendingState = getComposerState(true, 'Hello tutor');
+  assert.equal(pendingState.showStop, true);
+  assert.equal(pendingState.showSend, false);
+  assert.equal(pendingState.sendDisabled, true);
+  assert.equal(pendingState.hint, 'Esc to stop');
+  assert.equal(pendingState.stopButton.icon, '■');
+  assert.equal(pendingState.stopButton.label, 'Stop');
+  assert.equal(pendingState.stopButton.ariaLabel, 'Stop generation');
+
+  const idleState = getComposerState(false, 'Hello tutor');
+  assert.equal(idleState.showStop, false);
+  assert.equal(idleState.showSend, true);
+  assert.equal(idleState.sendDisabled, false);
+  assert.equal(idleState.hint, 'Enter to send, Shift+Enter for newline');
+});

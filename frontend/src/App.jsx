@@ -43,6 +43,7 @@ export default function App() {
   const [sessions, setSessions] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentTurnData, setCurrentTurnData] = useState(null);
+  const [inputText, setInputText] = useState('');
 
   // FalkorDB Memories
   const [memories, setMemories] = useState([]);
@@ -63,9 +64,13 @@ export default function App() {
   const [renameModal, setRenameModal] = useState({ isOpen: false, session: null });
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, session: null });
 
-  // Refs for tracking active user and search input
+  // Refs for tracking active user, session, search, and abort controllers
   const activeUserRef = useRef(userId);
   const activeSessionRef = useRef(sessionId);
+  const turnEpochRef = useRef(0);
+  const abortControllerRef = useRef(null);
+  const pendingTextRef = useRef('');
+  const pendingSessionRef = useRef('');
   const searchInputRef = useRef(null);
   const chatInputRef = useRef(null);
 
@@ -225,6 +230,14 @@ export default function App() {
 
   // Start a New Chat
   const handleNewChat = useCallback(() => {
+    turnEpochRef.current++;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsSending(false);
+    setInputText('');
+
     const newSess = generateSessionId();
     setSessionId(newSess);
     setMessages([]);
@@ -259,6 +272,11 @@ export default function App() {
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
       if (e.key === 'Escape') {
+        // If composer textarea is currently focused and sending, Stop is handled by textarea onKeyDown
+        if (document.activeElement === chatInputRef.current && isSending) {
+          return;
+        }
+
         if (renameModal.isOpen) {
           setRenameModal({ isOpen: false, session: null });
         } else if (deleteModal.isOpen) {
@@ -278,11 +296,19 @@ export default function App() {
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [renameModal.isOpen, deleteModal.isOpen, isDrawerOpen, isSidebarOpen]);
+  }, [renameModal.isOpen, deleteModal.isOpen, isDrawerOpen, isSidebarOpen, isSending]);
 
   // User Switch Handler
   const handleUserChange = (newUserId) => {
     if (newUserId === userId) return;
+    turnEpochRef.current++;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsSending(false);
+    setInputText('');
+
     setUserId(newUserId);
     activeUserRef.current = newUserId;
     setStoredUserId(newUserId);
@@ -320,24 +346,99 @@ export default function App() {
       return;
     }
 
+    turnEpochRef.current++;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsSending(false);
+    setInputText('');
+
     setIsSidebarOpen(false);
     loadSessionDetail(targetSessionId, userId);
   };
+
+  // Stop Generation Handler
+  const handleStop = useCallback(async () => {
+    if (!isSending) return;
+
+    // 1. Advance epoch so late response is ignored
+    turnEpochRef.current++;
+
+    // 2. Abort active network/mock request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    setIsSending(false);
+
+    const pendingText = pendingTextRef.current;
+    const reqSession = pendingSessionRef.current;
+    const reqUser = activeUserRef.current;
+
+    // 3. Keep user's message in thread and add small muted note under it
+    setMessages(prev => {
+      if (prev.length === 0) return prev;
+      const updated = [...prev];
+      const lastIdx = updated.length - 1;
+      if (updated[lastIdx]?.role === 'user') {
+        updated[lastIdx] = {
+          ...updated[lastIdx],
+          stoppedNote: 'Stopped. The tutor may still have saved this to memory - check Saved memories.'
+        };
+      }
+      return updated;
+    });
+
+    // 4. Refresh memories and sidebar sessions
+    loadMemories(reqUser);
+    loadSessions(reqUser);
+
+    // 5. Restore text to composer only if the user message was not saved
+    try {
+      if (reqSession) {
+        const detail = await getSession(reqSession, reqUser);
+        const wasSaved = (detail?.messages || []).some(m => m.role === 'user' && m.text === pendingText);
+        if (!wasSaved) {
+          setInputText(pendingText);
+        } else {
+          setInputText('');
+        }
+      } else {
+        setInputText(pendingText);
+      }
+    } catch {
+      setInputText(pendingText);
+    }
+  }, [isSending, loadMemories, loadSessions]);
 
   // Send Message
   const handleSendMessage = async (text) => {
     const reqUser = userId;
     const reqSession = sessionId;
+    const currentEpoch = ++turnEpochRef.current;
+
+    pendingTextRef.current = text;
+    pendingSessionRef.current = reqSession;
 
     const userMsg = { role: 'user', text };
     setMessages(prev => [...prev, userMsg]);
     setIsSending(true);
+    setInputText('');
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
-      const turnResponse = await sendChatMessage(reqUser, reqSession, text);
+      const turnResponse = await sendChatMessage(reqUser, reqSession, text, controller.signal);
 
-      // Epoch guard: ignore if user switched mid-request
-      if (activeUserRef.current !== reqUser || activeSessionRef.current !== reqSession) {
+      // Epoch guard: ignore if user switched mid-request, started new chat, or stopped
+      if (
+        turnEpochRef.current !== currentEpoch ||
+        activeUserRef.current !== reqUser ||
+        activeSessionRef.current !== reqSession
+      ) {
         return;
       }
 
@@ -371,7 +472,14 @@ export default function App() {
         });
       }
     } catch (err) {
-      if (activeUserRef.current !== reqUser || activeSessionRef.current !== reqSession) {
+      if (
+        err.name === 'AbortError' ||
+        controller.signal.aborted ||
+        turnEpochRef.current !== currentEpoch ||
+        activeUserRef.current !== reqUser ||
+        activeSessionRef.current !== reqSession
+      ) {
+        // Abort must not be treated as a failure: no error message and no retry button
         return;
       }
 
@@ -385,8 +493,9 @@ export default function App() {
         }
       ]);
     } finally {
-      if (activeUserRef.current === reqUser && activeSessionRef.current === reqSession) {
+      if (turnEpochRef.current === currentEpoch) {
         setIsSending(false);
+        abortControllerRef.current = null;
       }
     }
   };
@@ -498,7 +607,10 @@ export default function App() {
         <ChatArea
           messages={messages}
           isLoading={isSending}
+          inputText={inputText}
+          onInputChange={setInputText}
           onSendMessage={handleSendMessage}
+          onStop={handleStop}
           onRetry={handleRetryLastMessage}
           onOpenEvidence={handleOpenEvidence}
           demoUserLabel={currentUserObj.label}

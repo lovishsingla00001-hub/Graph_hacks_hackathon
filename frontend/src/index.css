@@ -535,6 +535,16 @@ select:focus-visible,
   white-space: pre-wrap;
 }
 
+.stopped-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+  font-style: italic;
+  max-width: 85%;
+  text-align: right;
+  line-height: 1.4;
+}
+
 .message-row.assistant {
   align-items: flex-start;
 }
@@ -794,6 +804,34 @@ select:focus-visible,
 .btn-send:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.btn-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: var(--surface-2);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: var(--radius-full);
+  padding: 0.35rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  height: 32px;
+}
+.btn-stop:hover {
+  background-color: var(--accent);
+  color: #141210;
+}
+.btn-stop-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+.btn-stop-label {
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
 }
 
 /* ==========================================================================
