@@ -8,8 +8,8 @@ Unlike naive chatbots or flat vector stores that merely retrieve semantic simila
 
 ## 👥 Team
 
-- [My name] - frontend and demo
-- [Partner name] - backend
+- Lovish Singla: Frontend, Backend, Demo.
+- Arjun Singha: FalkorDB graph work, Demo.
 
 **Demo video**: [VIDEO_LINK]
 
