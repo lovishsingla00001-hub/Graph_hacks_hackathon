@@ -3,7 +3,7 @@ RecallAI Pydantic Schemas
 Single source of truth matching docs/API_CONTRACT.md.
 """
 import re
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 USER_ID_REGEX = re.compile(r"^[a-z0-9_-]{3,40}$")
@@ -105,7 +105,7 @@ class SessionSummary(BaseModel):
     created_at: Optional[str] = None
 
 class ChatMessageItem(BaseModel):
-    id: Optional[str] = None
+    id: Optional[Union[int, str]] = None
     session_id: str
     user_id: str
     role: Literal["user", "assistant", "system"]
