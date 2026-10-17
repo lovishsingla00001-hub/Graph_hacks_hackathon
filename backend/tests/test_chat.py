@@ -152,9 +152,56 @@ def test_chat_partial_success_handling(client: TestClient, monkeypatch):
     assert data["saved_memories"][0]["value"] == "generators"
     assert len(data["warnings"]) == 1
     assert data["warnings"][0]["stage"] == "llm"
-    assert data["reply"].startswith("[System Message] Answer model unavailable:")
-    assert "Simulated LLM service outage" in data["reply"]
+    # Raw provider error is kept in warnings
+    assert "Simulated LLM service outage" in data["warnings"][0]["message"]
+    # Chat bubble receives friendly system message without raw provider error text
+    assert data["reply"].startswith("[System Message] The AI model is temporarily unavailable. Try again later.")
+    assert "Simulated LLM service outage" not in data["reply"]
     assert "Your memory was saved to your knowledge graph." in data["reply"]
+
+def test_chat_quota_error_friendly_reply_and_scrubbing(client: TestClient, monkeypatch):
+    """
+    When LLM returns 429/RESOURCE_EXHAUSTED or quota error, reply must show:
+    '[System Message] The AI model is busy or out of free quota. Try again later.'
+    and raw provider error (including JSON and URLs) must ONLY be in warnings.
+    Any exposed API keys in provider error must be scrubbed with [REDACTED].
+    """
+    from backend.app.services.answer_generation import answer_generation_service
+    from backend.app.services.llm_client import LLMGenerationError
+
+    fake_raw_error = (
+        '429 RESOURCE_EXHAUSTED: Quota exceeded for metric GenerateContent requests. '
+        'key=AIzaSyA1234567890abcdef1234567890abcdef. '
+        'Visit https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com '
+        '{"error": {"code": 429, "message": "Resource has been exhausted (e.g. check quota)."}}'
+    )
+
+    def fail_quota(*args, **kwargs):
+        raise LLMGenerationError(fake_raw_error)
+
+    monkeypatch.setattr(answer_generation_service, "generate_tutoring_answer", fail_quota)
+
+    res = client.post("/chat", json={
+        "user_id": TEST_CHAT_USER,
+        "session_id": "sess_quota_test",
+        "message": "Can you explain recursion?"
+    })
+
+    assert res.status_code == 200
+    data = res.json()
+    # Chat bubble reply is clean, friendly, with zero JSON, URLs, or keys
+    assert data["reply"] == "[System Message] The AI model is busy or out of free quota. Try again later."
+    assert "RESOURCE_EXHAUSTED" not in data["reply"]
+    assert "https://" not in data["reply"]
+    assert "{" not in data["reply"]
+    assert "AIza" not in data["reply"]
+
+    # Raw provider error is available ONLY in warnings, but with API key strictly scrubbed
+    assert len(data["warnings"]) >= 1
+    llm_warn = next(w for w in data["warnings"] if w["stage"] == "llm")
+    assert "RESOURCE_EXHAUSTED" in llm_warn["message"]
+    assert "AIza" not in llm_warn["message"]
+    assert "[REDACTED]" in llm_warn["message"]
 
 def test_chat_validation_errors(client: TestClient):
     """

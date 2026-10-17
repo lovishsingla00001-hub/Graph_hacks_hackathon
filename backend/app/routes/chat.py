@@ -2,8 +2,10 @@
 RecallAI Chat Turn Route
 POST /chat endpoint executing the complete Agent Memory & Tutoring pipeline.
 """
+import re
 import logging
 from fastapi import APIRouter, status
+from backend.app.config import settings
 from backend.app.schemas import ChatRequest, ChatResponse, WarningItem, MemoryItem
 from backend.app.services.extraction import extraction_service
 from backend.app.services.memory_store import memory_store
@@ -12,6 +14,19 @@ from backend.app.services.answer_generation import answer_generation_service
 from backend.app.services.chat_history import chat_history_service
 
 logger = logging.getLogger("recallai.chat")
+
+def scrub_sensitive_info(text: str) -> str:
+    """Removes API keys and secrets from error messages before storing in warnings."""
+    if not text:
+        return ""
+    result = str(text)
+    for key in [settings.GEMINI_API_KEY, settings.OPENAI_API_KEY, settings.GROQ_API_KEY, settings.SUPABASE_SECRET_KEY]:
+        if key and len(key) >= 6:
+            result = result.replace(key, "[REDACTED]")
+    result = re.sub(r'AIza[0-9A-Za-z\-_]{35}', '[REDACTED]', result)
+    result = re.sub(r'(?:key|api_key|token|secret|password)=([^\s&"\'<>]+)', r'key=[REDACTED]', result, flags=re.IGNORECASE)
+    result = re.sub(r'Bearer\s+([^\s"\'<>]+)', 'Bearer [REDACTED]', result, flags=re.IGNORECASE)
+    return result
 
 router = APIRouter(tags=["Chat"])
 
@@ -85,13 +100,23 @@ def chat_turn(request: ChatRequest) -> ChatResponse:
         )
     except Exception as e:
         logger.error("Answer generation failed: %s", e)
-        reason = str(e).strip()
-        all_warnings.append(WarningItem(stage="llm", message=f"Answer generation error: {reason}"))
+        raw_reason = str(e).strip()
+        sanitized_reason = scrub_sensitive_info(raw_reason)
+        all_warnings.append(WarningItem(stage="llm", message=f"Answer generation error: {sanitized_reason}"))
+
+        # Friendly quota/model errors: Never show raw JSON, URLs, or keys in the chat bubble.
+        # Raw provider error is available only in the "Why this answer?" drawer under warnings.
+        reason_lower = raw_reason.lower()
+        if any(term in reason_lower for term in ["429", "resource_exhausted", "quota", "rate limit", "ratelimit", "too many requests"]):
+            friendly_text = "The AI model is busy or out of free quota. Try again later."
+        else:
+            friendly_text = "The AI model is temporarily unavailable. Try again later."
+
         # Partial success guarantee: Clearly labeled system message, never disguised as a tutor reply
         if saved_memories:
-            reply = f"[System Message] Answer model unavailable: {reason}. Your memory was saved to your knowledge graph."
+            reply = f"[System Message] {friendly_text} Your memory was saved to your knowledge graph."
         else:
-            reply = f"[System Message] Answer model unavailable: {reason}."
+            reply = f"[System Message] {friendly_text}"
 
     # Step 5: Persist Chat History to Supabase
     try:
