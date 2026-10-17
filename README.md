@@ -194,6 +194,10 @@ node --test test/api.test.mjs
    - Isolation is enforced at the graph namespace boundary (`recallai_<user_id>`). Inter-student collaborative memory or classroom-level aggregation is outside the scope of this hackathon submission.
 5. **Free-Tier Gemini API Quota Constraints**:
    - The free-tier Google Gemini API quota is strictly limited (approximately 20 requests per day on free-tier keys). A complete interactive demo run across 4–5 turns consumes approximately 8 API calls (extraction + generation per turn). As a result, repeated live interactive demo sessions can quickly exhaust daily free-tier quota. For unlimited continuous and regression testing, our automated test suite (`pytest backend/tests -v`) is 100% mocked and consumes zero API quota.
+6. **Chat History Storage, Demo User IDs & Privacy Notice**:
+   - **Storage Split**: Personal educational memory (struggles, preferences, goals, curriculum links) is stored exclusively in **FalkorDB**. Full chat conversation messages and session turns are persisted in **Supabase** via backend-mediated REST calls.
+   - **Demo User ID is NOT Authentication**: In this hackathon demo, the user ID (e.g. `student_alice`) is a client-provided label to demonstrate graph isolation, **not an authenticated identity**. Anyone who knows or enters another user's ID could access or read those chat transcripts.
+   - **Synthetic Data Only**: Because there is no authentication layer or password protection for student IDs, **only synthetic demo data must be used**. Never enter real-world personal identifying information (PII), sensitive data, or real secrets into the application.
 
 ---
 
