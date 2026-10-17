@@ -121,11 +121,11 @@ Follow these exact interactive steps in the web app (`http://localhost:5173`) to
   I'm learning Python, struggle with recursion, and prefer small examples.
   ```
 - **What to observe**:
-  - **Memory Panel (Left)**: 3 active memories appear instantly:
-    - `LEARNS: python`
-    - `STRUGGLES_WITH: recursion` (linked to `Concept(recursion)`)
-    - `PREFERS: small examples`
-  - **Evidence Inspector (Right)**: Shows real graph paths stored in FalkorDB.
+  - **Inline Memory Badge**: An inline badge appears beneath the assistant reply: `Remembered: recursion`.
+  - **Graph Evidence Drawer**: Click **"Why this answer?"** on the assistant message (or **"Graph Evidence"** in the header) to open the slide-out drawer showing:
+    - Real FalkorDB graph paths (`Student -> Memory -> Concept`).
+    - The **"Saved memories"** tab listing Alice's active preferences and struggles with active count badge.
+  - **Left Sidebar**: The conversation is automatically titled and saved in Supabase under **"Today"**.
 
 ### Turn 2: Prerequisite Graph Traversal in Action
 - **Type message**:
@@ -133,7 +133,8 @@ Follow these exact interactive steps in the web app (`http://localhost:5173`) to
   Can you explain how recursion works?
   ```
 - **What to observe**:
-  - **Evidence Inspector**: FalkorDB executes a 2-hop prerequisite traversal:
+  - **Assistant Response**: Rendered in clean Markdown via `react-markdown` with code highlighting and a copy-to-clipboard button.
+  - **Evidence Drawer**: Click **"Why this answer?"** to inspect the 2-hop prerequisite traversal:
     $$\text{Concept(recursion)} \xrightarrow{\text{REQUIRES}} \text{Concept(functions)} \xrightarrow{\text{REQUIRES}} \text{Concept(variables)}$$
     Origin labels: `ABOUT` labeled as **"You said"**, `REQUIRES` labeled as **"Curated"**.
   - **Tutor Response**: Teaches prerequisites first (base cases, call stack) and honors the preference by providing concise code snippets.
@@ -144,22 +145,29 @@ Follow these exact interactive steps in the web app (`http://localhost:5173`) to
   I no longer struggle with recursion, but generators confuse me.
   ```
 - **What to observe**:
-  - **Memory Panel**: The previous `recursion` card transitions to a dashed border with a **`RESOLVED`** badge. A new active struggle card for `generators` is created.
+  - **Inline Memory Badge**: Shows `Updated: recursion resolved`.
+  - **Evidence Drawer ("Saved memories" tab)**:
+    - `recursion` node transitions to strikethrough with a **`RESOLVED`** badge.
+    - A new active struggle node for `generators` is created.
 
-### Turn 4: Multi-Session Memory Continuity
-- **Action**: Click the **"New Session"** button in the top header bar (clears chat history, starts new session `sess_2` for `student_alice`).
-- **Type message**:
-  ```text
-  How should I write my first generator?
-  ```
+### Turn 4: Multi-Session Memory Continuity & Chat History
+- **Action**:
+  1. Click **"+ New chat"** at the top of the sidebar.
+  2. Notice the empty-state screen with a Cormorant Garamond serif greeting (`"Hey there, Alice"`), centered composer, and 3 suggestion chips.
+  3. Send message:
+     ```text
+     How should I write my first generator?
+     ```
 - **What to observe**:
-  - Even though the chat history was cleared, RecallAI recalls Alice's persistent struggle (`generators`) and preference (`small examples`) from FalkorDB, and retrieves prerequisite concepts (`functions`, `loops`).
+  - Even in a fresh session, RecallAI recalls Alice's persistent struggle (`generators`) and preference (`small examples`) from FalkorDB, and retrieves prerequisite concepts (`functions`, `loops`).
+  - Click on the previous chat under **"Today"** in the sidebar: the complete previous thread is restored with Markdown formatting and turn evidence.
+  - Hover over a chat in the sidebar to **Rename** (`✎`) or **Delete** (`✕`) with confirmation dialogs. Press `Ctrl+K` to search chats.
 
 ### Turn 5: Strict Multi-Tenant User Isolation
-- **Action**: Change **User ID** in the header to `student_bob`.
+- **Action**: Change **Demo Student Graph** at the bottom of the sidebar to `student_bob`.
 - **What to observe**:
-  - The memory panel immediately displays **"Active Memories (0)"**.
-  - Student Alice's graph (`recallai_student_alice`) is strictly isolated from Bob's graph (`recallai_student_bob`), ensuring zero cross-student data leakage.
+  - The Graph Evidence drawer immediately displays **"No memories stored in FalkorDB for student_bob yet"**.
+  - Student Alice's graph (`recallai_student_alice`) and chat history are strictly isolated from Bob's graph (`recallai_student_bob`), ensuring zero cross-student data leakage.
 
 ---
 
