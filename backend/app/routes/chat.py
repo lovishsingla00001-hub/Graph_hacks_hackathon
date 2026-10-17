@@ -9,6 +9,7 @@ from backend.app.services.extraction import extraction_service
 from backend.app.services.memory_store import memory_store
 from backend.app.services.retrieval import retrieval_service
 from backend.app.services.answer_generation import answer_generation_service
+from backend.app.services.chat_history import chat_history_service
 
 logger = logging.getLogger("recallai.chat")
 
@@ -23,6 +24,7 @@ def chat_turn(request: ChatRequest) -> ChatResponse:
     3. Persists memories or resolves corrections in the user's isolated FalkorDB graph.
     4. Traverses 2-hop prerequisite graph to retrieve relevant context and real evidence.
     5. Synthesizes a personalized educational response using retrieved context as data.
+    6. Persists turn history to Supabase (graceful fallback if offline).
     """
     all_warnings: list[WarningItem] = []
     saved_memories: list[MemoryItem] = []
@@ -88,6 +90,26 @@ def chat_turn(request: ChatRequest) -> ChatResponse:
             reply = f"[System Message] Answer model unavailable: {reason}. Your memory was saved to your knowledge graph."
         else:
             reply = f"[System Message] Answer model unavailable: {reason}."
+
+    # Step 5: Persist Chat History to Supabase
+    try:
+        turn_data = {
+            "saved_memories": [m.model_dump() for m in saved_memories],
+            "retrieved_memories": [m.model_dump() for m in retrieved_memories],
+            "evidence_paths": [p.model_dump(by_alias=True) for p in evidence_paths],
+            "warnings": [w.model_dump() for w in all_warnings],
+            "explanation": explanation
+        }
+        chat_history_service.save_turn(
+            user_id=request.user_id,
+            session_id=request.session_id,
+            user_message=request.message,
+            reply=reply,
+            turn_data=turn_data
+        )
+    except Exception as e:
+        logger.error("Chat history persistence failed: %s", type(e).__name__)
+        all_warnings.append(WarningItem(stage="history", message=f"Chat history write failed: {str(e)}"))
 
     return ChatResponse(
         reply=reply,

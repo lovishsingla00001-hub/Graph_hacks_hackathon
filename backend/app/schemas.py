@@ -14,6 +14,7 @@ class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
     database: Literal["connected", "disconnected"]
     llm_configured: bool
+    supabase: Literal["connected", "unavailable", "not_configured"] = "not_configured"
 
 # Memory
 class MemoryItem(BaseModel):
@@ -41,7 +42,7 @@ class EvidencePath(BaseModel):
 
 # Warnings
 class WarningItem(BaseModel):
-    stage: Literal["extraction", "memory_write", "retrieval", "llm", "log"]
+    stage: Literal["extraction", "memory_write", "retrieval", "llm", "log", "history"]
     message: str
 
 # Chat
@@ -95,3 +96,53 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorDetail
+
+# Chat History & Sessions
+class SessionSummary(BaseModel):
+    id: str
+    title: str
+    updated_at: str
+    created_at: Optional[str] = None
+
+class ChatMessageItem(BaseModel):
+    id: Optional[str] = None
+    session_id: str
+    user_id: str
+    role: Literal["user", "assistant", "system"]
+    text: str
+    turn: Optional[dict] = None
+    created_at: Optional[str] = None
+
+class SessionDetailResponse(BaseModel):
+    id: str
+    title: str
+    user_id: str
+    messages: List[ChatMessageItem] = Field(default_factory=list)
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+class RenameSessionRequest(BaseModel):
+    user_id: str
+    title: str
+
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id(cls, v: str) -> str:
+        v = v.strip()
+        if not USER_ID_REGEX.match(v):
+            raise ValueError("user_id must match ^[a-z0-9_-]{3,40}$")
+        return v
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("title cannot be empty")
+        if len(v) > 100:
+            raise ValueError("title cannot exceed 100 characters")
+        return v
+
+class DeleteSessionResponse(BaseModel):
+    status: Literal["deleted"] = "deleted"
+    id: str
