@@ -29,6 +29,83 @@ const mockDatabase = {
   student_bob: []
 };
 
+// In-Memory Mock Sessions Store
+export const mockSessions = {
+  student_alice: [
+    {
+      id: "sess_alice_today",
+      title: "Recursion and call stack base cases",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      messages: [
+        {
+          id: 1,
+          session_id: "sess_alice_today",
+          user_id: "student_alice",
+          role: "user",
+          text: "I struggle with recursion in Python, but I know how functions work.",
+          turn: null,
+          created_at: new Date(Date.now() - 3600000).toISOString()
+        },
+        {
+          id: 2,
+          session_id: "sess_alice_today",
+          user_id: "student_alice",
+          role: "assistant",
+          text: "Recursion is simply a function that calls itself with a termination condition (base case). Since you already know functions, think of each recursive call as opening a fresh call stack frame.",
+          turn: {
+            saved_memories: [{ id: "mem_rec_01", kind: "STRUGGLES_WITH", value: "recursion", status: "active", action: "created" }],
+            retrieved_memories: [{ id: "mem_seed_alice_01", kind: "PREFERS", value: "visual analogies and stepwise code examples", status: "active" }],
+            evidence_paths: [{
+              steps: [
+                { from: "Student", relation: "HAS_MEMORY", to: 'Memory("Struggles with recursion")', origin: "You said" },
+                { from: 'Memory("Struggles with recursion")', relation: "ABOUT", to: "Concept(recursion)", origin: "You said" },
+                { from: "Concept(recursion)", relation: "REQUIRES", to: "functions", origin: "Curated" }
+              ]
+            }],
+            warnings: [],
+            explanation: "Retrieved preference for visual analogies; traversed recursion prerequisite to functions."
+          },
+          created_at: new Date(Date.now() - 3590000).toISOString()
+        }
+      ]
+    },
+    {
+      id: "sess_alice_yesterday",
+      title: "Python functions and parameter scoping",
+      created_at: new Date(Date.now() - 86400000).toISOString(),
+      updated_at: new Date(Date.now() - 86400000).toISOString(),
+      messages: [
+        {
+          id: 3,
+          session_id: "sess_alice_yesterday",
+          user_id: "student_alice",
+          role: "user",
+          text: "How do return statements work in Python functions?",
+          turn: null,
+          created_at: new Date(Date.now() - 86400000).toISOString()
+        },
+        {
+          id: 4,
+          session_id: "sess_alice_yesterday",
+          user_id: "student_alice",
+          role: "assistant",
+          text: "The return statement immediately terminates function execution and passes back the specified value to the caller.",
+          turn: {
+            saved_memories: [],
+            retrieved_memories: [],
+            evidence_paths: [],
+            warnings: [],
+            explanation: "Answered foundational question about functions."
+          },
+          created_at: new Date(Date.now() - 86395000).toISOString()
+        }
+      ]
+    }
+  ],
+  student_bob: []
+};
+
 // Simulated 2-hop prerequisite graph
 const mockCurriculumPrereqs = {
   recursion: "functions",
@@ -179,7 +256,7 @@ async function mockChatTurn(userId, sessionId, message) {
     explanation = "No memories matched this query.";
   }
 
-  return normalizeChatResponse({
+  const normResp = normalizeChatResponse({
     reply: `[Mock AI Tutor] I understand you are exploring ${extractedConcept || "Python"}! Because recursion relies heavily on functions and variable scope, let's step through a concrete base condition example first.`,
     saved_memories: savedMemories,
     retrieved_memories: retrievedMemories,
@@ -187,6 +264,52 @@ async function mockChatTurn(userId, sessionId, message) {
     warnings: [],
     explanation
   });
+
+  // Persist turn to in-memory mockSessions store
+  if (!mockSessions[userId]) {
+    mockSessions[userId] = [];
+  }
+  let session = mockSessions[userId].find(s => s.id === sessionId);
+  const nowIso = new Date().toISOString();
+  if (!session) {
+    session = {
+      id: sessionId,
+      title: message.trim().slice(0, 40) || "New Chat",
+      user_id: userId,
+      created_at: nowIso,
+      updated_at: nowIso,
+      messages: []
+    };
+    mockSessions[userId].unshift(session);
+  } else {
+    session.updated_at = nowIso;
+  }
+  session.messages.push({
+    id: Date.now(),
+    session_id: sessionId,
+    user_id: userId,
+    role: "user",
+    text: message,
+    turn: null,
+    created_at: nowIso
+  });
+  session.messages.push({
+    id: Date.now() + 1,
+    session_id: sessionId,
+    user_id: userId,
+    role: "assistant",
+    text: normResp.reply,
+    turn: {
+      saved_memories: normResp.saved_memories,
+      retrieved_memories: normResp.retrieved_memories,
+      evidence_paths: normResp.evidence_paths,
+      warnings: normResp.warnings,
+      explanation: normResp.explanation
+    },
+    created_at: nowIso
+  });
+
+  return normResp;
 }
 
 // ---------------------------------------------------------------------------
@@ -300,5 +423,246 @@ export async function sendChatMessage(userId, sessionId, message) {
     return normalizeChatResponse(data);
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * List chat sessions for a user (newest first, max 50).
+ */
+export async function listSessions(userId) {
+  if (!userId) {
+    throw new Error("user_id is required to list sessions.");
+  }
+
+  if (API_MODE === "mock") {
+    await new Promise(res => setTimeout(res, 120));
+    const list = mockSessions[userId] || [];
+    return list.map(s => ({
+      id: s.id,
+      title: s.title,
+      updated_at: s.updated_at,
+      created_at: s.created_at
+    }));
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/sessions?user_id=${encodeURIComponent(userId)}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error?.message || data?.detail || `Failed to fetch sessions (${res.status})`);
+    }
+    return Array.isArray(data) ? data : (data.sessions || []);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Retrieve a specific session and all its messages in chronological order.
+ */
+export async function getSession(sessionId, userId) {
+  if (!sessionId || !userId) {
+    throw new Error("session_id and user_id are required.");
+  }
+
+  if (API_MODE === "mock") {
+    await new Promise(res => setTimeout(res, 120));
+    const list = mockSessions[userId] || [];
+    const found = list.find(s => s.id === sessionId);
+    if (!found) {
+      const err = new Error(`Session '${sessionId}' not found.`);
+      err.status = 404;
+      throw err;
+    }
+    return JSON.parse(JSON.stringify(found));
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}?user_id=${encodeURIComponent(userId)}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data?.error?.message || data?.detail || `Failed to fetch session (${res.status})`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Rename a chat session.
+ */
+export async function renameSession(sessionId, userId, title) {
+  if (!sessionId || !userId || !title) {
+    throw new Error("session_id, user_id, and title are required.");
+  }
+
+  if (API_MODE === "mock") {
+    await new Promise(res => setTimeout(res, 120));
+    const list = mockSessions[userId] || [];
+    const found = list.find(s => s.id === sessionId);
+    if (!found) {
+      const err = new Error(`Session '${sessionId}' not found.`);
+      err.status = 404;
+      throw err;
+    }
+    found.title = title.trim();
+    found.updated_at = new Date().toISOString();
+    return { id: found.id, title: found.title, updated_at: found.updated_at };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, title: title.trim() }),
+      signal: controller.signal
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data?.error?.message || data?.detail || `Failed to rename session (${res.status})`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Delete a chat session.
+ */
+export async function deleteSession(sessionId, userId) {
+  if (!sessionId || !userId) {
+    throw new Error("session_id and user_id are required.");
+  }
+
+  if (API_MODE === "mock") {
+    await new Promise(res => setTimeout(res, 120));
+    if (mockSessions[userId]) {
+      const idx = mockSessions[userId].findIndex(s => s.id === sessionId);
+      if (idx !== -1) {
+        mockSessions[userId].splice(idx, 1);
+        return { status: "deleted", id: sessionId };
+      }
+    }
+    const err = new Error(`Session '${sessionId}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}?user_id=${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data?.error?.message || data?.detail || `Failed to delete session (${res.status})`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Groups sessions into Today, Yesterday, and Earlier.
+ */
+export function groupSessionsByDate(sessions = []) {
+  const groups = {
+    Today: [],
+    Yesterday: [],
+    Earlier: []
+  };
+
+  if (!Array.isArray(sessions)) return groups;
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 86400000;
+
+  for (const session of sessions) {
+    const timestamp = session.updated_at || session.created_at;
+    const d = timestamp ? new Date(timestamp).getTime() : now.getTime();
+    if (d >= startOfToday) {
+      groups.Today.push(session);
+    } else if (d >= startOfYesterday) {
+      groups.Yesterday.push(session);
+    } else {
+      groups.Earlier.push(session);
+    }
+  }
+
+  return groups;
+}
+
+/**
+ * Local storage fallback helpers (per-user, wrapped in try/catch)
+ */
+export function getLocalSessions(userId) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return [];
+    const raw = localStorage.getItem(`recallai_local_sessions_${userId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalSession(userId, session) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage || !session?.id) return;
+    const existing = getLocalSessions(userId);
+    const idx = existing.findIndex(s => s.id === session.id);
+    const updated = {
+      ...session,
+      updated_at: session.updated_at || new Date().toISOString()
+    };
+    if (idx !== -1) {
+      existing[idx] = updated;
+    } else {
+      existing.unshift(updated);
+    }
+    localStorage.setItem(`recallai_local_sessions_${userId}`, JSON.stringify(existing.slice(0, 50)));
+  } catch {
+    // Graceful fallback
+  }
+}
+
+export function deleteLocalSession(userId, sessionId) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    const existing = getLocalSessions(userId);
+    const filtered = existing.filter(s => s.id !== sessionId);
+    localStorage.setItem(`recallai_local_sessions_${userId}`, JSON.stringify(filtered));
+  } catch {
+    // Graceful fallback
   }
 }

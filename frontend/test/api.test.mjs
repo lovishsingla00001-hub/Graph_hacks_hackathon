@@ -78,3 +78,100 @@ test('mock sendChatMessage handles /simulate-write-failure with warning', async 
   assert.equal(res.warnings.length, 1);
   assert.equal(res.warnings[0].stage, 'memory_write');
 });
+
+// ---------------------------------------------------------------------------
+// Phase B: Chat History & Session Management Tests
+// ---------------------------------------------------------------------------
+
+test('mock listSessions returns sessions and enforces user isolation', async () => {
+  const { listSessions } = await import('../src/api.js');
+  
+  // Alice starts with seeded sessions; Bob starts empty
+  const aliceSessions = await listSessions('student_alice');
+  const bobSessions = await listSessions('student_bob');
+
+  assert.ok(Array.isArray(aliceSessions));
+  assert.ok(aliceSessions.length >= 2);
+  assert.ok(aliceSessions[0].id);
+  assert.ok(aliceSessions[0].title);
+  assert.ok(aliceSessions[0].updated_at);
+
+  assert.ok(Array.isArray(bobSessions));
+  assert.equal(bobSessions.length, 0);
+
+  // Missing userId rejects
+  await assert.rejects(async () => {
+    await listSessions('');
+  }, /user_id is required/);
+});
+
+test('mock getSession returns chronological messages with turn metadata', async () => {
+  const { getSession } = await import('../src/api.js');
+
+  const session = await getSession('sess_alice_today', 'student_alice');
+  assert.equal(session.id, 'sess_alice_today');
+  assert.ok(Array.isArray(session.messages));
+  assert.equal(session.messages.length, 2);
+  assert.equal(session.messages[0].role, 'user');
+  assert.equal(session.messages[1].role, 'assistant');
+  assert.ok(session.messages[1].turn);
+  assert.ok(session.messages[1].turn.saved_memories);
+
+  // Nonexistent session rejects with 404
+  await assert.rejects(async () => {
+    await getSession('sess_nonexistent', 'student_alice');
+  }, (err) => err.status === 404);
+});
+
+test('mock renameSession updates title correctly', async () => {
+  const { renameSession, getSession } = await import('../src/api.js');
+
+  const updated = await renameSession('sess_alice_today', 'student_alice', 'Mastering Base Conditions');
+  assert.equal(updated.title, 'Mastering Base Conditions');
+
+  const reloaded = await getSession('sess_alice_today', 'student_alice');
+  assert.equal(reloaded.title, 'Mastering Base Conditions');
+});
+
+test('mock deleteSession deletes session and subsequent get throws 404', async () => {
+  const { deleteSession, getSession } = await import('../src/api.js');
+
+  const res = await deleteSession('sess_alice_yesterday', 'student_alice');
+  assert.equal(res.status, 'deleted');
+
+  await assert.rejects(async () => {
+    await getSession('sess_alice_yesterday', 'student_alice');
+  }, (err) => err.status === 404);
+});
+
+test('groupSessionsByDate groups sessions into Today, Yesterday, and Earlier', async () => {
+  const { groupSessionsByDate } = await import('../src/api.js');
+
+  const now = new Date();
+  const todayTimestamp = now.toISOString();
+  const yesterdayTimestamp = new Date(now.getTime() - 86400000).toISOString();
+  const earlierTimestamp = new Date(now.getTime() - 86400000 * 5).toISOString();
+
+  const sessions = [
+    { id: 's1', title: 'Session 1', updated_at: todayTimestamp },
+    { id: 's2', title: 'Session 2', updated_at: yesterdayTimestamp },
+    { id: 's3', title: 'Session 3', updated_at: earlierTimestamp }
+  ];
+
+  const grouped = groupSessionsByDate(sessions);
+  assert.equal(grouped.Today.length, 1);
+  assert.equal(grouped.Today[0].id, 's1');
+  assert.equal(grouped.Yesterday.length, 1);
+  assert.equal(grouped.Yesterday[0].id, 's2');
+  assert.equal(grouped.Earlier.length, 1);
+  assert.equal(grouped.Earlier[0].id, 's3');
+});
+
+test('localStorage fallback functions handle missing window gracefully without crashing', async () => {
+  const { getLocalSessions, saveLocalSession, deleteLocalSession } = await import('../src/api.js');
+
+  // In Node.js environment where window is undefined:
+  assert.deepEqual(getLocalSessions('student_test'), []);
+  assert.doesNotThrow(() => saveLocalSession('student_test', { id: 's_fallback', title: 'Local fallback' }));
+  assert.doesNotThrow(() => deleteLocalSession('student_test', 's_fallback'));
+});

@@ -1,8 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
-import ChatWindow from './components/ChatWindow';
-import EvidenceInspector from './components/EvidenceInspector';
-import MemoryList from './components/MemoryList';
-import { getHealth, getMemories, sendChatMessage, API_MODE } from './api';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Header from './components/Header';
+import Sidebar from './components/Sidebar';
+import ChatArea from './components/ChatArea';
+import EvidenceDrawer from './components/EvidenceDrawer';
+import { RenameModal, DeleteModal } from './components/Modals';
+import {
+  getHealth,
+  getMemories,
+  sendChatMessage,
+  listSessions,
+  getSession,
+  renameSession,
+  deleteSession,
+  getLocalSessions,
+  saveLocalSession,
+  deleteLocalSession
+} from './api';
 
 const DEMO_USERS = [
   { id: 'student_alice', label: 'Alice (visual learner)' },
@@ -14,72 +27,72 @@ function generateSessionId() {
 }
 
 export default function App() {
-  // localStorage holds only the selected demo user id
+  // Selected demo student identity
   const [userId, setUserId] = useState(() => {
-    return localStorage.getItem('recallai_demo_user_id') || 'student_alice';
+    try {
+      return localStorage.getItem('recallai_demo_user_id') || 'student_alice';
+    } catch {
+      return 'student_alice';
+    }
   });
 
+  // Active session and conversation messages
   const [sessionId, setSessionId] = useState(() => generateSessionId());
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      text: 'Hello! I am RecallAI, your Python tutor powered by FalkorDB graph memory. What concepts are you exploring today?'
-    }
-  ]);
-
+  const [messages, setMessages] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [currentTurnData, setCurrentTurnData] = useState(null);
+
+  // FalkorDB Memories
   const [memories, setMemories] = useState([]);
   const [isLoadingMemories, setIsLoadingMemories] = useState(false);
   const [memoriesError, setMemoriesError] = useState(null);
 
-  const [isSending, setIsSending] = useState(false);
+  // Health and Storage Status
   const [systemHealth, setSystemHealth] = useState(null);
+  const [isHistoryOffline, setIsHistoryOffline] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
-  // Active user ref to ignore stale async responses if user switches mid-request
+  // UI Drawer and Sidebar state
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState('evidence');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Modals state
+  const [renameModal, setRenameModal] = useState({ isOpen: false, session: null });
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, session: null });
+
+  // Refs for tracking active user and search input
   const activeUserRef = useRef(userId);
+  const activeSessionRef = useRef(sessionId);
+  const searchInputRef = useRef(null);
+  const chatInputRef = useRef(null);
+
   useEffect(() => {
     activeUserRef.current = userId;
-    localStorage.setItem('recallai_demo_user_id', userId);
+    try {
+      localStorage.setItem('recallai_demo_user_id', userId);
+    } catch {
+      // Ignore
+    }
   }, [userId]);
 
-  // Initial health check
+  useEffect(() => {
+    activeSessionRef.current = sessionId;
+  }, [sessionId]);
+
+  // Load backend and database health
   useEffect(() => {
     getHealth()
       .then(data => setSystemHealth(data))
-      .catch(() => setSystemHealth({ status: 'degraded', database: 'disconnected' }));
+      .catch(() => setSystemHealth({ status: 'degraded', database: 'disconnected', supabase: 'unavailable' }));
   }, []);
 
-  // Initial load and whenever userId changes
-  useEffect(() => {
-    let isCancelled = false;
+  // Fetch FalkorDB graph memories for a user
+  const loadMemories = useCallback((targetUser = userId) => {
     setIsLoadingMemories(true);
     setMemoriesError(null);
 
-    getMemories(userId)
-      .then(res => {
-        if (!isCancelled) {
-          setMemories(res.memories || []);
-        }
-      })
-      .catch(err => {
-        if (!isCancelled) {
-          setMemoriesError(err.message || 'Error loading memories');
-        }
-      })
-      .finally(() => {
-        if (!isCancelled) {
-          setIsLoadingMemories(false);
-        }
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [userId]);
-
-  const loadMemories = (targetUser = userId) => {
-    setIsLoadingMemories(true);
-    setMemoriesError(null);
     getMemories(targetUser)
       .then(res => {
         if (activeUserRef.current === targetUser) {
@@ -88,7 +101,7 @@ export default function App() {
       })
       .catch(err => {
         if (activeUserRef.current === targetUser) {
-          setMemoriesError(err.message || 'Error loading memories');
+          setMemoriesError(err.message || 'Error loading graph memories');
         }
       })
       .finally(() => {
@@ -96,57 +109,162 @@ export default function App() {
           setIsLoadingMemories(false);
         }
       });
-  };
+  }, [userId]);
+
+  // Fetch chat sessions from Supabase with graceful localStorage fallback
+  const loadSessions = useCallback((targetUser = userId) => {
+    listSessions(targetUser)
+      .then(remoteSessions => {
+        if (activeUserRef.current === targetUser) {
+          setSessions(remoteSessions);
+          setIsHistoryOffline(false);
+        }
+      })
+      .catch(() => {
+        // Supabase unreachable -> Fallback gracefully to localStorage
+        if (activeUserRef.current === targetUser) {
+          const local = getLocalSessions(targetUser);
+          setSessions(local);
+          setIsHistoryOffline(true);
+        }
+      });
+  }, [userId]);
+
+  // Initial load and user identity changes
+  useEffect(() => {
+    loadMemories(userId);
+    loadSessions(userId);
+  }, [userId, loadMemories, loadSessions]);
+
+  // Global Keyboard Shortcuts (Esc closes modals/drawers; Ctrl+K / Cmd+K focuses search)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (renameModal.isOpen) {
+          setRenameModal({ isOpen: false, session: null });
+        } else if (deleteModal.isOpen) {
+          setDeleteModal({ isOpen: false, session: null });
+        } else if (isDrawerOpen) {
+          setIsDrawerOpen(false);
+        } else if (isSidebarOpen) {
+          setIsSidebarOpen(false);
+        }
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [renameModal.isOpen, deleteModal.isOpen, isDrawerOpen, isSidebarOpen]);
 
   // User Switch Handler
   const handleUserChange = (newUserId) => {
     if (newUserId === userId) return;
     setUserId(newUserId);
-    setSessionId(generateSessionId());
-    setMessages([
-      {
-        role: 'assistant',
-        text: `Switched demo identity to ${newUserId}. Loaded their isolated FalkorDB graph.`
-      }
-    ]);
-    setCurrentTurnData(null);
-  };
-
-  // New Conversation Handler (same user_id, new session_id, memory untouched)
-  const handleNewConversation = () => {
     const newSess = generateSessionId();
     setSessionId(newSess);
-    setMessages([
-      {
-        role: 'assistant',
-        text: 'Started a new conversation session. Your persistent graph memory from previous sessions is preserved.'
-      }
-    ]);
+    setMessages([]);
     setCurrentTurnData(null);
-    loadMemories(userId);
+    setIsSidebarOpen(false);
   };
 
-  // Send message
-  const handleSendMessage = async (text) => {
-    const requestUser = userId;
-    const requestSession = sessionId;
+  // Start a New Chat
+  const handleNewChat = () => {
+    const newSess = generateSessionId();
+    setSessionId(newSess);
+    setMessages([]);
+    setCurrentTurnData(null);
+    setIsSidebarOpen(false);
+    setTimeout(() => chatInputRef.current?.focus(), 50);
+  };
 
-    setMessages(prev => [...prev, { role: 'user', text }]);
+  // Select a Chat from Sidebar
+  const handleSelectSession = (targetSessionId) => {
+    if (targetSessionId === sessionId && messages.length > 0) {
+      setIsSidebarOpen(false);
+      return;
+    }
+
+    setSessionId(targetSessionId);
+    setIsSidebarOpen(false);
+
+    getSession(targetSessionId, userId)
+      .then(detail => {
+        if (activeSessionRef.current === targetSessionId && activeUserRef.current === userId) {
+          const historyMsgs = (detail.messages || []).map(m => ({
+            role: m.role,
+            text: m.text,
+            turn: m.turn,
+            created_at: m.created_at
+          }));
+          setMessages(historyMsgs);
+
+          // Find latest assistant turn evidence
+          const lastAsst = [...historyMsgs].reverse().find(m => m.role === 'assistant' && m.turn);
+          setCurrentTurnData(lastAsst ? lastAsst.turn : null);
+        }
+      })
+      .catch(() => {
+        // Fallback to local session if remote load fails
+        const local = getLocalSessions(userId);
+        const match = local.find(s => s.id === targetSessionId);
+        if (match && activeSessionRef.current === targetSessionId) {
+          setMessages(match.messages || []);
+          const lastAsst = [...(match.messages || [])].reverse().find(m => m.role === 'assistant' && m.turn);
+          setCurrentTurnData(lastAsst ? lastAsst.turn : null);
+        }
+      });
+  };
+
+  // Send Message
+  const handleSendMessage = async (text) => {
+    const reqUser = userId;
+    const reqSession = sessionId;
+
+    const userMsg = { role: 'user', text };
+    setMessages(prev => [...prev, userMsg]);
     setIsSending(true);
 
     try {
-      const turnResponse = await sendChatMessage(requestUser, requestSession, text);
+      const turnResponse = await sendChatMessage(reqUser, reqSession, text);
 
-      // Ignore stale responses if user switched
-      if (activeUserRef.current !== requestUser) return;
+      // Epoch guard: ignore if user switched mid-request
+      if (activeUserRef.current !== reqUser || activeSessionRef.current !== reqSession) {
+        return;
+      }
 
-      setMessages(prev => [...prev, { role: 'assistant', text: turnResponse.reply }]);
+      const asstMsg = {
+        role: 'assistant',
+        text: turnResponse.reply,
+        turn: turnResponse
+      };
+
+      setMessages(prev => [...prev, asstMsg]);
       setCurrentTurnData(turnResponse);
 
-      // Re-fetch memories to show newly saved/resolved nodes immediately
-      loadMemories(requestUser);
+      // Refresh graph memories in FalkorDB
+      loadMemories(reqUser);
+
+      // Refresh session list so newly created session appears with backend-generated title
+      loadSessions(reqUser);
+
+      // If offline storage active, save locally
+      if (isHistoryOffline) {
+        saveLocalSession(reqUser, {
+          id: reqSession,
+          title: text.slice(0, 40),
+          messages: [...messages, userMsg, asstMsg]
+        });
+      }
     } catch (err) {
-      if (activeUserRef.current !== requestUser) return;
+      if (activeUserRef.current !== reqUser || activeSessionRef.current !== reqSession) {
+        return;
+      }
+
       setMessages(prev => [
         ...prev,
         {
@@ -157,99 +275,155 @@ export default function App() {
         }
       ]);
     } finally {
-      if (activeUserRef.current === requestUser) {
+      if (activeUserRef.current === reqUser && activeSessionRef.current === reqSession) {
         setIsSending(false);
       }
     }
   };
 
+  // Retry Last Message
   const handleRetryLastMessage = () => {
     const lastMsg = messages[messages.length - 1];
-    if (lastMsg && lastMsg.isError && lastMsg.failedText) {
-      // Remove the error message and retry
+    if (lastMsg?.isError && lastMsg.failedText) {
       setMessages(prev => prev.slice(0, -1));
       handleSendMessage(lastMsg.failedText);
     }
   };
 
+  // Rename Session Handlers
+  const handleOpenRename = (session) => {
+    setRenameModal({ isOpen: true, session });
+  };
+
+  const handleSaveRename = async (newTitle) => {
+    const sessionToRename = renameModal.session;
+    if (!sessionToRename) return;
+
+    try {
+      await renameSession(sessionToRename.id, userId, newTitle);
+      setSessions(prev =>
+        prev.map(s => (s.id === sessionToRename.id ? { ...s, title: newTitle } : s))
+      );
+      if (isHistoryOffline) {
+        saveLocalSession(userId, { ...sessionToRename, title: newTitle });
+      }
+    } catch (err) {
+      console.error('Rename failed:', err);
+    } finally {
+      setRenameModal({ isOpen: false, session: null });
+    }
+  };
+
+  // Delete Session Handlers
+  const handleOpenDelete = (session) => {
+    setDeleteModal({ isOpen: true, session });
+  };
+
+  const handleConfirmDelete = async () => {
+    const sessionToDelete = deleteModal.session;
+    if (!sessionToDelete) return;
+
+    try {
+      await deleteSession(sessionToDelete.id, userId);
+      setSessions(prev => prev.filter(s => s.id !== sessionToDelete.id));
+      if (isHistoryOffline) {
+        deleteLocalSession(userId, sessionToDelete.id);
+      }
+      // If deleted active session, start a new chat
+      if (sessionToDelete.id === sessionId) {
+        handleNewChat();
+      }
+    } catch (err) {
+      console.error('Delete failed:', err);
+    } finally {
+      setDeleteModal({ isOpen: false, session: null });
+    }
+  };
+
+  // "Why this answer?" Evidence trigger
+  const handleOpenEvidence = (turnData) => {
+    if (turnData) {
+      setCurrentTurnData(turnData);
+    }
+    setDrawerTab('evidence');
+    setIsDrawerOpen(true);
+  };
+
+  const currentUserObj = DEMO_USERS.find(u => u.id === userId) || { label: userId };
+  const activeMemoriesCount = memories.filter(m => m.status === 'active').length;
+
   return (
-    <>
-      <header className="app-header">
-        <div className="header-brand">
-          <span className="logo-badge">RecallAI</span>
-          <div>
-            <div className="app-title">RecallAI — Agent Memory & Coordination</div>
-            <div className="app-subtitle">FalkorDB Graph Memory • Hackathon Track 2</div>
-          </div>
-        </div>
+    <div className="app-container">
+      {/* Top Header */}
+      <Header
+        systemHealth={systemHealth}
+        isHistoryOffline={isHistoryOffline}
+        activeMemoriesCount={activeMemoriesCount}
+        isDrawerOpen={isDrawerOpen}
+        onToggleDrawer={() => setIsDrawerOpen(prev => !prev)}
+        onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
+      />
 
-        <div className="header-controls">
-          <span className={`mode-badge ${API_MODE === 'live' ? 'live' : 'mock'}`}>
-            ● {API_MODE.toUpperCase()} MODE
-          </span>
+      {/* Main Layout Body */}
+      <div className="app-body">
+        {/* Left Sidebar */}
+        <Sidebar
+          sessions={sessions}
+          activeSessionId={sessionId}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onSelectSession={handleSelectSession}
+          onNewChat={handleNewChat}
+          onOpenRename={handleOpenRename}
+          onOpenDelete={handleOpenDelete}
+          userId={userId}
+          demoUsers={DEMO_USERS}
+          onUserChange={handleUserChange}
+          isHistoryOffline={isHistoryOffline}
+          isOpen={isSidebarOpen}
+          searchInputRef={searchInputRef}
+        />
 
-          {systemHealth && (
-            <span
-              style={{
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                color: systemHealth.database === 'connected' ? 'var(--accent-emerald)' : 'var(--accent-rose)'
-              }}
-              title={`FalkorDB: ${systemHealth.database}, LLM Configured: ${systemHealth.llm_configured}`}
-            >
-              DB: {systemHealth.database}
-            </span>
-          )}
-
-          <div className="user-selector-group">
-            <span className="user-selector-label">Demo Identity:</span>
-            <select
-              className="user-select"
-              value={userId}
-              onChange={(e) => handleUserChange(e.target.value)}
-              title="Demo identity for testing user isolation, not authentication"
-            >
-              {DEMO_USERS.map(u => (
-                <option key={u.id} value={u.id}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <button
-            className="btn-secondary"
-            onClick={handleNewConversation}
-            title="Start a new session without losing graph memory"
-          >
-            + New Session
-          </button>
-        </div>
-      </header>
-
-      <main className="app-container">
-        {/* Column 1: Chat Window */}
-        <ChatWindow
+        {/* Center Chat Area */}
+        <ChatArea
           messages={messages}
           isLoading={isSending}
           onSendMessage={handleSendMessage}
-          onRetryLastMessage={handleRetryLastMessage}
+          onRetry={handleRetryLastMessage}
+          onOpenEvidence={handleOpenEvidence}
+          demoUserLabel={currentUserObj.label}
+          inputRef={chatInputRef}
         />
 
-        {/* Column 2: "Why this answer?" Evidence Inspector */}
-        <EvidenceInspector
+        {/* Right Slide-out Graph Evidence Drawer */}
+        <EvidenceDrawer
+          isOpen={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+          activeTab={drawerTab}
+          onTabChange={setDrawerTab}
           currentTurnData={currentTurnData}
-        />
-
-        {/* Column 3: Saved Memories Inspector */}
-        <MemoryList
-          userId={userId}
           memories={memories}
-          isLoading={isLoadingMemories}
-          error={memoriesError}
-          onRefresh={() => loadMemories(userId)}
+          isLoadingMemories={isLoadingMemories}
+          memoriesError={memoriesError}
+          onRefreshMemories={() => loadMemories(userId)}
+          userId={userId}
         />
-      </main>
-    </>
+      </div>
+
+      {/* Modals */}
+      <RenameModal
+        isOpen={renameModal.isOpen}
+        initialTitle={renameModal.session?.title || ''}
+        onSave={handleSaveRename}
+        onClose={() => setRenameModal({ isOpen: false, session: null })}
+      />
+
+      <DeleteModal
+        isOpen={deleteModal.isOpen}
+        sessionTitle={deleteModal.session?.title || ''}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setDeleteModal({ isOpen: false, session: null })}
+      />
+    </div>
   );
 }
