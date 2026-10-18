@@ -1015,6 +1015,170 @@ select:focus-visible,
   color: var(--muted);
 }
 
+/* Compact node-and-edge view of the returned FalkorDB evidence paths */
+.graph-map {
+  margin: 0.8rem 0 0.35rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(145deg, rgba(197, 160, 89, 0.07), rgba(35, 32, 29, 0.55));
+}
+
+.graph-map-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.graph-map-caption {
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.graph-map-count {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  color: var(--accent);
+  font-size: 0.68rem;
+}
+
+.graph-map-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 0.75rem;
+}
+
+.graph-map-path {
+  min-width: 0;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(18, 17, 16, 0.35);
+}
+
+.graph-map-path-label {
+  margin-bottom: 0.45rem;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.graph-map-flow {
+  display: flex;
+  align-items: stretch;
+  gap: 0.2rem;
+  overflow-x: auto;
+  padding: 0.1rem 0 0.35rem;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.graph-map-node {
+  display: flex;
+  flex: 0 0 112px;
+  min-height: 58px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.6rem;
+  background: var(--surface-2);
+}
+
+.graph-map-node-student { border-color: rgba(127, 174, 207, 0.65); }
+.graph-map-node-memory { border-color: rgba(197, 160, 89, 0.75); }
+.graph-map-node-concept { border-color: rgba(139, 179, 135, 0.7); }
+
+.graph-map-node-type {
+  color: var(--muted);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.graph-map-node-label {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-map-edge {
+  position: relative;
+  display: flex;
+  flex: 0 0 72px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+}
+
+.graph-map-edge-line {
+  position: absolute;
+  top: 27px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--accent);
+  opacity: 0.75;
+}
+
+.graph-map-edge-line::after {
+  position: absolute;
+  top: -3px;
+  right: 0;
+  width: 6px;
+  height: 6px;
+  border-top: 1px solid var(--accent);
+  border-right: 1px solid var(--accent);
+  content: '';
+  transform: rotate(45deg);
+}
+
+.graph-map-edge-label,
+.graph-map-edge-origin {
+  position: relative;
+  z-index: 1;
+  max-width: 76px;
+  overflow: hidden;
+  padding: 0.08rem 0.25rem;
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-map-edge-label { color: var(--accent); }
+.graph-map-edge-origin { border: 1px solid var(--border); color: var(--muted); font-family: inherit; }
+.graph-map-edge-origin.user-said { border-color: var(--accent); color: var(--accent); }
+
+.graph-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.graph-map-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.graph-map-legend-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); }
+.graph-map-legend-dot.user-said { background: var(--accent); }
+.graph-map-legend-dot.curated { background: #8bb387; }
+
 /* Saved Memories Tab List */
 .memories-list {
   display: flex;
