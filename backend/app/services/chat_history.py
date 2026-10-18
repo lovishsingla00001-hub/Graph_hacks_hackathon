@@ -18,12 +18,17 @@ class ChatHistoryService:
 
     @property
     def _headers(self) -> Dict[str, str]:
-        return {
+        headers = {
             "apikey": settings.SUPABASE_SECRET_KEY,
-            "Authorization": f"Bearer {settings.SUPABASE_SECRET_KEY}",
             "Content-Type": "application/json",
             "Prefer": "return=representation"
         }
+        # Current Supabase sb_secret_* API keys are not JWTs and must only be
+        # sent in the apikey header. Legacy service_role JWT keys still need
+        # Authorization so PostgREST assumes the service_role database role.
+        if not settings.SUPABASE_SECRET_KEY.startswith("sb_secret_"):
+            headers["Authorization"] = f"Bearer {settings.SUPABASE_SECRET_KEY}"
+        return headers
 
     @property
     def _rest_url(self) -> str:
