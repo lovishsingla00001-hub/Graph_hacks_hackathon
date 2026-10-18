@@ -2,6 +2,12 @@
 
 RecallAI is an explainable AI tutoring agent with a persistent graph memory architecture powered by **FalkorDB**. Built for the hackathon **"Graph Hacks: Context for AI Agents"** (WeMakeDevs x FalkorDB, Oct 15–18 2026, **Track 2: Agent Memory and Coordination**).
 
+**One-line pitch:** RecallAI remembers what a student finds difficult, follows curriculum prerequisites in FalkorDB, and shows the graph path behind each personalized tutoring answer.
+
+**Team:** Lovish Singla and Arjun Singha.
+
+**Stack:** Python 3.14 + FastAPI + the official FalkorDB Python client; React + Vite; Gemini by default with OpenAI/Groq provider support. The agent loop is a small custom Python pipeline rather than a separate framework. FalkorDB stores and retrieves learner memory and curriculum relationships; Supabase stores chat transcripts only.
+
 Unlike naive chatbots or flat vector stores that merely retrieve semantic similarity chunks, RecallAI maps student struggles to a **curated curriculum knowledge graph** and executes **multi-hop prerequisite traversals** in FalkorDB (`recursion -> functions -> variables`) to address foundational learning gaps.
 
 ---
@@ -77,6 +83,9 @@ source backend/venv/bin/activate
 # Install dependencies
 pip install -r backend/requirements.txt
 
+# Optional Python lint and formatter tools
+pip install -r backend/requirements-dev.txt
+
 # Create backend .env
 cp backend/.env.example backend/.env
 ```
@@ -86,6 +95,17 @@ Open `backend/.env` and verify your configuration:
 - `LLM_PROVIDER`: `gemini` (default)
 - `LLM_MODEL`: `gemini-3.8-flash` (Google Gemini 3.8 Flash is configured as the default model; setting `LLM_MODEL` in `backend/.env` overrides it to any supported model such as `gemini-2.5-flash`, `gpt-4o-mini`, etc.)
 - `GEMINI_API_KEY`: Add your Google Gemini API key here for live tutoring. (Automated tests run completely mocked without requiring an API key).
+- `SUPABASE_URL` and `SUPABASE_SECRET_KEY`: Configure persistent chat history. Use a server-only Supabase secret key (`sb_secret_...`), never a publishable key; keep it in `backend/.env`, not in frontend files or source control. Apply [`backend/migrations/001_chat_history.sql`](backend/migrations/001_chat_history.sql) once in the target project's SQL Editor. If omitted, chat history falls back to local storage.
+
+### Seed the synthetic demo graph
+
+After FalkorDB is running and `backend/.env` has the matching database password, run this from the repository root. It creates an example `student_alice` graph with a recursion struggle and a small-examples preference; repeated runs deduplicate them.
+
+```bash
+python -m backend.seed_demo
+```
+
+The graph labels, properties, and relationship rationale are documented in [`docs/schema.md`](docs/schema.md). The seed reuses the existing curriculum and memory services, keeping graph writes centralized.
 
 Start the FastAPI server:
 ```bash
@@ -94,7 +114,7 @@ uvicorn backend.app.main:app --reload --port 8000
 Verify backend health in your browser or terminal:
 ```bash
 curl http://127.0.0.1:8000/health
-# Returns: {"status":"ok","database":"connected","llm_provider":"gemini","model":"gemini-3.8-flash"}
+# Returns status, FalkorDB connection, LLM readiness, and Supabase status without credentials.
 ```
 
 ### 4. Frontend Setup & Startup
@@ -107,6 +127,10 @@ npm run dev
 Open your browser at `http://localhost:5173`.
 - Set **User ID**: `student_alice`
 - The top-right connection badge will display **"Backend: Connected"** and **"API Mode: Live"**.
+
+### GitHub Pages preview
+
+The GitHub Actions workflow publishes the frontend at `https://lovishsingla00001-hub.github.io/Graph_hacks_hackathon/` after a push to `main` (or a manual workflow run). This is an **offline UI preview** built with `VITE_API_MODE=mock`; it does not connect to FalkorDB, Gemini, or Supabase. Use the Docker and backend steps above for the live graph-backed agent. In the repository's **Settings → Pages**, choose **GitHub Actions** as the build and deployment source before the first deployment.
 
 ---
 
@@ -173,15 +197,21 @@ Follow these exact interactive steps in the web app (`http://localhost:5173`) to
 
 ## 🧪 Running Automated Tests
 
-RecallAI includes a comprehensive, 100% mocked automated test suite that runs against real FalkorDB without making external LLM calls or consuming API quota:
+Start FalkorDB first (`docker compose up -d falkordb`). Backend tests exercise graph and API behavior, but the suite is not fully isolated from the configured LLM provider; tests that call `/chat` may use API quota. Frontend tests use Node's built-in test runner.
 
 ```bash
-# Run all 67 backend tests (pytest)
+# Run the backend suite (review tests that call /chat before running with a paid or quota-limited key)
 pytest backend/tests -v
 
-# Run all 22 frontend contract & adapter tests (Node.js test runner)
+# Run frontend tests, lint, and production build
 cd frontend
 node --test test/api.test.mjs
+npm run lint
+npm run build
+
+# From repository root: Python lint and format check
+ruff check backend
+ruff format --check backend
 ```
 
 ---
@@ -189,7 +219,7 @@ node --test test/api.test.mjs
 ## ⚠️ Honest Limitations & Disclosures
 
 1. **Scripted Model Outputs in Automated Tests**:
-   - The evaluation scenarios in `backend/tests/` execute against real FalkorDB queries and traversals, but use scripted (mocked) model outputs for the extraction and generation stages. This guarantees deterministic, lightning-fast regression testing (67 backend tests and 22 frontend tests in <5s) without consuming free-tier Gemini API quota. Real-model browser interactions should be verified interactively.
+   - The backend suite contains graph and API tests, and some `/chat` tests can call the configured LLM provider. A full backend pass has not been verified in this workspace. The frontend suite has 27 tests and can run without external service credentials.
 2. **Prompt Injection Mitigation vs Guarantee**:
    - RecallAI wraps all retrieved student profile memories inside structured `<user_stored_data>` XML containers and in-session conversation history inside `<conversation_so_far>` containers, commanding the tutor model to treat both strictly as factual data/context. While this defends against standard instruction-hijacking and jailbreak attempts, prompt injection defense in Large Language Models is an active defense-in-depth mitigation, not a formal mathematical guarantee against all novel jailbreak vectors.
 3. **Scope of Persistence Verification**:
@@ -201,7 +231,7 @@ node --test test/api.test.mjs
 4. **Single-User Graph Boundary**:
    - Isolation is enforced at the graph namespace boundary (`recallai_<user_id>`). Inter-student collaborative memory or classroom-level aggregation is outside the scope of this hackathon submission.
 5. **Free-Tier Gemini API Quota Constraints**:
-   - The free-tier Google Gemini API quota is strictly limited (approximately 20 requests per day on free-tier keys). A complete interactive demo run across 4–5 turns consumes approximately 8 API calls (extraction + generation per turn). As a result, repeated live interactive demo sessions can quickly exhaust daily free-tier quota. For unlimited continuous and regression testing, our automated test suite (`pytest backend/tests -v`) is 100% mocked and consumes zero API quota.
+   - Live tutoring calls use the configured provider's quota. Automated tests that send `/chat` requests may also consume provider quota unless that test path is mocked. Use the frontend tests for a quick offline regression check.
 6. **Chat History Storage, Demo User IDs & Privacy Notice**:
    - **Storage Split**: Personal educational memory (struggles, preferences, goals, curriculum links) is stored exclusively in **FalkorDB**. Full chat conversation messages and session turns are persisted in **Supabase** via backend-mediated REST calls.
    - **Demo User ID is NOT Authentication**: In this hackathon demo, the user ID (e.g. `student_alice`) is a client-provided label to demonstrate graph isolation, **not an authenticated identity**. Anyone who knows or enters another user's ID could access or read those chat transcripts.
@@ -211,9 +241,10 @@ node --test test/api.test.mjs
 
 ## 📚 Project Documentation
 
-- [docs/SUBMISSION_CHECKLIST.md](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/docs/SUBMISSION_CHECKLIST.md): Official WeMakeDevs x FalkorDB submission checklist mapping all requirements.
-- [docs/ARCHITECTURE.md](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/docs/ARCHITECTURE.md): Complete system architecture, 5-stage pipeline, and sequence diagrams.
-- [docs/QUERIES.md](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/docs/QUERIES.md): Full reference of all 15 parameterized Cypher queries.
-- [docs/DEMO_SCRIPT.md](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/docs/DEMO_SCRIPT.md): Step-by-step evaluation script for judges.
-- [docs/TEST_CHECKLIST.md](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/docs/TEST_CHECKLIST.md): Honest test status checklist with pass/fail indicators.
-- [AI_USE.md](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/AI_USE.md): Complete disclosure of AI tools and pair-programming usage.
+- [docs/schema.md](docs/schema.md): Graph labels, properties, relationship semantics, and a worked evidence path.
+- [docs/SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md): Official WeMakeDevs x FalkorDB submission checklist mapping requirements.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): System architecture, pipeline, and sequence diagrams.
+- [docs/QUERIES.md](docs/QUERIES.md): Reference for parameterized Cypher queries.
+- [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md): Step-by-step judge walkthrough.
+- [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md): Verification checklist and test status.
+- [AI_USE.md](AI_USE.md): Disclosure of AI tools and pair-programming usage.
