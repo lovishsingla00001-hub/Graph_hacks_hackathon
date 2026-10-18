@@ -1,10 +1,21 @@
 # RecallAI Project Status
 
-Updated: 2026-10-15 (Hackathon Event Window)
+Updated: 2026-10-18 (Finalization Pass)
 
-## Current Status
-- **Phase**: Phase 4 Complete (Graph Retrieval, /chat Pipeline, and Live Frontend Connection) -> Advancing to Phase 5
-- **Branch**: `dev`
+## Finalization Snapshot — 2026-10-18
+
+- The core Track 2 implementation is present: per-user FalkorDB graphs, persistent memory, multi-hop prerequisite retrieval, graph evidence paths, and the React evidence drawer.
+- Supabase chat history is configured for the selected project. A synthetic save/read/delete round-trip passed; its temporary records were removed.
+- Added `docs/schema.md`, an idempotent `python -m backend.seed_demo` entry point, a reusable Supabase migration, and Python Ruff lint/format configuration.
+- Verification in this workspace: frontend tests **27/27 passed**; extraction tests **12/12 passed**; Vite production build passed; Oxlint completed with warnings. Python compilation of the seed script passed.
+- Full backend integration tests are **not verified in this environment**: they require FalkorDB, and no local backend was listening on port 8000 during this pass. The FalkorDB integration tests stalled on graph connection and were stopped; no passing result is claimed.
+- Remaining gap against the expanded team checklist: the product renders returned graph evidence paths, but does not yet log every Cypher call with its raw returned subgraph, and it has one tutor agent rather than a peer-agent coordination demo.
+- This workspace is a downloaded source archive and has no `.git` directory, so branch cleanliness, commit history, and pushing changes are not verifiable here. No history was rewritten.
+- Manual submission items still need team action: record the demo video, confirm roster and submission form, arrange a public deployment if available, and post the schema/demo question to the FalkorDB community.
+
+## Historical development log
+
+The following phase notes were carried in the downloaded project archive and describe work recorded before this finalization pass. They are not a current Git status report.
 
 ## Done
 - [x] Inspected repo state and git log (clean dev branch on remote `origin/dev`).

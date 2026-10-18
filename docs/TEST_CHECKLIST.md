@@ -2,6 +2,20 @@
 
 > **Honest Reporting Standard**: Every item is marked strictly as `[RUN - PASS]`, `[RUN - FAIL]`, `[MANUAL - PASS]`, or `[NOT RUN]`. No item is marked passed unless verified.
 
+## Current finalization run — 2026-10-18
+
+- [x] **[RUN - PASS]** Frontend unit suite: 27/27 tests passed (`npm.cmd test` in `frontend/`).
+- [x] **[RUN - PASS]** Graph-independent extraction suite: 12/12 tests passed (`pytest backend/tests/test_extraction.py`).
+- [x] **[RUN - PASS]** Frontend production build completed (`npm.cmd run build`).
+- [x] **[RUN - PASS]** Frontend lint completed; Oxlint emitted existing warnings (not a clean lint run).
+- [x] **[RUN - PASS]** Supabase synthetic chat-history save/read/delete round-trip succeeded; temporary records were removed.
+- [x] **[RUN - PASS]** Schema query confirmed both Supabase tables have RLS enabled and service-role access.
+- [x] **[RUN - PASS]** Python syntax check passed for the new demo seed script and updated Supabase service.
+- [ ] **[NOT RUN]** Full 67-test backend integration suite: requires reachable FalkorDB. The run stalled while its first graph integration test tried to connect, so it was stopped without a pass claim.
+- [ ] **[NOT RUN]** Fresh-clone seed-and-run verification: this workspace was provided as a source archive without `.git`, and FalkorDB was not reachable from this run.
+
+The backend result recorded later in this file is a prior project log and is not the result of the current finalization run.
+
 ---
 
 ## 1. Database & Persistence Tests
@@ -83,7 +97,7 @@
 - [x] **[RUN - PASS]** Live Supabase operations verified against live Supabase: `save_turn`, `GET /sessions`, `GET /sessions/{id}`, `PATCH /sessions/{id}`, `DELETE /sessions/{id}` for user `student_test`. Zero LLM calls made and zero keys exposed.
 - [x] **[RUN - PASS]** Cross-user session hijacking security: user B sending user A's session ID is rejected from overwriting user A's session/messages; `/chat` returns 200 with history warning (`backend/tests/test_chat_history.py::test_save_turn_hijacking_rejection_and_chat_warning`).
 - [x] **[RUN - PASS]** URL and filter safety: strictly validated IDs via regex (`^[a-zA-Z0-9_\-]+$`) and encoded query parameters (`encodeURIComponent`).
-- [x] **[RUN - PASS]** Backend test suite: 62/62 tests passing (`pytest backend/tests`).
+- [ ] **[NOT RUN - CURRENT RUN]** Backend test suite: a prior project log records 62 passing tests; the current finalization run did not complete the FalkorDB-dependent suite (see above).
 - [x] **[RUN - PASS]** Frontend test suite: 19/19 unit tests passing (`npm test` in `frontend/`).
 - [x] **[RUN - PASS]** Frontend production build: `npm run build` completes cleanly without warnings or errors.
 - [x] **[RUN - PASS]** Claude-inspired UI: Left sidebar with grouped chat history (Today/Yesterday/Earlier), client-side search with `Ctrl+K`, per-chat Rename and Delete with confirm dialogs.

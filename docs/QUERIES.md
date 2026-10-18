@@ -1,6 +1,6 @@
 # RecallAI Central Cypher Queries Reference
 
-This document provides a complete, copyable reference of every Cypher query utilized in RecallAI, directly corresponding to [backend/app/queries.py](file:///c:/Users/Lovish%20Laptop/Documents/Graph_hacks_hackathon/backend/app/queries.py).
+This document provides a complete, copyable reference of every Cypher query utilized in RecallAI, directly corresponding to [backend/app/queries.py](../backend/app/queries.py).
 
 ---
 
