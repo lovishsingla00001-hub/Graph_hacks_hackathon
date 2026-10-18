@@ -1,4 +1,5 @@
 import React from 'react';
+import GraphEvidenceMap from './GraphEvidenceMap';
 
 export default function EvidenceDrawer({
   isOpen = false,
@@ -119,6 +120,8 @@ export default function EvidenceDrawer({
                     <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginBottom: '0.25rem' }}>
                       Exact knowledge and memory nodes traversed:
                     </div>
+
+                    <GraphEvidenceMap paths={evidence_paths} />
 
                     <div className="evidence-chain">
                       {evidence_paths.map((path, pIdx) => (
